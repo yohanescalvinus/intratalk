@@ -255,7 +255,7 @@ $('btnTestServer').onclick = async () => {
       throw new Error('HTTP ' + res.status);
     }
   } catch (err) {
-    alert(`❌ Gagal terhubung.\n\nPastikan:\n1. Server di laptop menyala\n2. IP benar\n3. Firewall Windows tidak memblokir\n4. HP & Laptop di Wi-Fi yang sama\n\nCatatan: Jika ini pertama kali, buka dulu https://${host}:8443 di tab baru, klik Advanced > Proceed, lalu tes lagi.`);
+    alert(`❌ Gagal terhubung.\n\nPastikan:\n1. Server di laptop menyala\n2. IP benar\n3. Firewall Windows tidak memblokir\n4. HP & Laptop di Wi-Fi yang sama\n\nCatatan: Jika ini pertama kali, buka dulu https://${host}:443 di tab baru, klik Advanced > Proceed, lalu tes lagi.`);
   } finally {
     btn.innerHTML = original;
     btn.disabled = false;
