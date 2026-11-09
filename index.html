@@ -8,10 +8,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
 <style>
   :root {
-    --bg: #f1f5f9; --card: #ffffff; --border: #e2e8f0;
+    --bg: #f1f5f9; --card: #fff; --border: #e2e8f0;
     --text: #1e293b; --muted: #64748b; --accent: #10b981;
   }
   .dark {
@@ -20,7 +21,8 @@
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
-    margin: 0; padding: 0; overscroll-behavior: none;
+    margin: 0; padding: 0;
+    overscroll-behavior: contain;   /* cegah pull-to-refresh */
     font-family: 'Inter', sans-serif;
     background: var(--bg); color: var(--text);
     transition: background .3s, color .3s;
@@ -28,7 +30,6 @@
   }
   .screen { display: none; }
   .screen.active { display: flex; }
-
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
 
   .ptt-button {
@@ -36,16 +37,20 @@
     transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .2s;
   }
   .ptt-button.talking {
-    transform: scale(0.94);
+    transform: scale(.94);
     box-shadow: 0 0 50px rgba(239,68,68,.7), inset 0 4px 14px rgba(0,0,0,.5) !important;
-    background: radial-gradient(circle, #ef4444 0%, #b91c1c 100%) !important;
+    background: radial-gradient(circle,#ef4444 0%,#b91c1c 100%) !important;
   }
   .pulse-ring { animation: pulse-ring 1.5s cubic-bezier(.215,.61,.355,1) infinite; }
   @keyframes pulse-ring {
-    0% { transform: scale(.95); opacity: .8; }
-    50% { transform: scale(1.15); opacity: .3; }
-    100% { transform: scale(.95); opacity: .8; }
+    0%{transform:scale(.95);opacity:.8} 50%{transform:scale(1.15);opacity:.3} 100%{transform:scale(.95);opacity:.8}
   }
+
+  /* Modal QR Scanner */
+  .modal { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(2,6,23,.9); backdrop-filter: blur(6px); }
+  .modal.open { display: flex; }
+  #qrReader { width: 100%; max-width: 320px; border-radius: 12px; overflow: hidden; }
+
   input[type=range] { accent-color: var(--accent); }
   .hidden { display: none !important; }
 </style>
@@ -55,7 +60,7 @@
 <!-- ================= LOGIN SCREEN ================= -->
 <section id="screenLogin" class="screen active" style="min-height:100vh;align-items:center;justify-content:center;padding:16px;">
   <div class="card" style="width:100%;max-width:380px;padding:24px;">
-    <div style="text-align:center;margin-bottom:24px;">
+    <div style="text-align:center;margin-bottom:20px;">
       <div style="display:inline-flex;width:64px;height:64px;border-radius:16px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);align-items:center;justify-content:center;color:#10b981;margin-bottom:12px;">
         <i class="fa-solid fa-walkie-talkie" style="font-size:28px;"></i>
       </div>
@@ -63,20 +68,29 @@
       <p style="font-size:12px;color:var(--muted);margin:4px 0 0;">Interkom LAN — tanpa internet</p>
     </div>
 
-    <!-- Info jaringan -->
-    <div id="netInfo" style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:12px;margin-bottom:16px;font-size:11px;line-height:1.7;">
-      <div style="display:flex;justify-content:space-between;">
-        <span style="color:var(--muted);">Status Jaringan</span>
-        <span id="netStatus" style="font-weight:700;">Mengecek...</span>
+    <!-- Card: Alamat Server -->
+    <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:12px;padding:12px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Alamat Server</span>
+        <span id="serverBadge" style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:6px;background:rgba(239,68,68,.2);color:#ef4444;">BELUM DISET</span>
       </div>
-      <div style="display:flex;justify-content:space-between;">
-        <span style="color:var(--muted);">IP Lokal</span>
-        <span id="myIP" style="font-family:monospace;font-weight:700;">-</span>
+
+      <div style="display:flex;gap:6px;">
+        <input id="inputServer" type="text" placeholder="192.168.1.100"
+          style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:monospace;font-size:13px;font-weight:600;" />
+        <button id="btnScanQR" title="Scan QR Server"
+          style="padding:10px 14px;border-radius:10px;background:#10b981;color:#fff;border:none;cursor:pointer;font-size:14px;">
+          <i class="fa-solid fa-qrcode"></i>
+        </button>
       </div>
-      <div style="display:flex;justify-content:space-between;">
-        <span style="color:var(--muted);">Server</span>
-        <span id="serverIP" style="font-family:monospace;font-weight:700;">-</span>
-      </div>
+      <p style="font-size:9px;color:var(--muted);margin:6px 0 0;line-height:1.5;">
+        💡 Lihat layar laptop server → scan QR yang muncul, atau ketik IP manual.
+      </p>
+
+      <!-- Tombol Test koneksi -->
+      <button id="btnTestServer" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;background:transparent;border:1px solid var(--border);color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;">
+        <i class="fa-solid fa-plug-circle-check"></i> Tes Koneksi Server
+      </button>
     </div>
 
     <div style="margin-bottom:12px;">
@@ -91,22 +105,17 @@
         style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:#10b981;font-size:16px;font-weight:700;font-family:monospace;" />
     </div>
 
-    <button id="btnJoin" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(to right,#059669,#10b981);color:#fff;font-weight:700;font-size:14px;border:none;cursor:pointer;transition:transform .1s;">
+    <button id="btnJoin" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(to right,#059669,#10b981);color:#fff;font-weight:700;font-size:14px;border:none;cursor:pointer;">
       <i class="fa-solid fa-right-to-bracket" style="margin-right:8px;"></i> Masuk Channel
     </button>
 
     <p id="loginError" style="font-size:11px;color:#ef4444;text-align:center;margin-top:12px;display:none;"></p>
-
-    <p style="font-size:10px;text-align:center;color:var(--muted);margin-top:16px;line-height:1.6;">
-      Pastikan HP terhubung ke <b>Wi-Fi yang sama</b> dengan server laptop.
-    </p>
   </div>
 </section>
 
-<!-- ================= MAIN APP ================= -->
+<!-- ================= MAIN APP (sama seperti sebelumnya) ================= -->
 <section id="screenApp" class="screen" style="flex-direction:column;width:100%;max-width:420px;margin:0 auto;min-height:100vh;padding:16px 16px 12px;">
 
-  <!-- Header -->
   <header style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
     <div style="display:flex;align-items:center;gap:10px;">
       <div style="width:40px;height:40px;border-radius:12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);display:flex;align-items:center;justify-content:center;color:#10b981;">
@@ -118,16 +127,15 @@
       </div>
     </div>
     <div style="display:flex;gap:6px;">
-      <button id="btnTheme" class="card" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;">
+      <button id="btnTheme" class="card" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;border:none;">
         <i id="themeIcon" class="fa-solid fa-sun" style="font-size:14px;"></i>
       </button>
-      <button id="btnLeave" class="card" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;">
+      <button id="btnLeave" class="card" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;border:none;">
         <i class="fa-solid fa-right-from-bracket" style="font-size:14px;"></i>
       </button>
     </div>
   </header>
 
-  <!-- Status Card -->
   <div class="card" style="padding:14px;margin-bottom:12px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
@@ -148,7 +156,6 @@
     </div>
   </div>
 
-  <!-- PTT Area -->
   <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:12px 0;">
     <div id="ringEffect" class="hidden pulse-ring" style="position:absolute;width:280px;height:280px;border-radius:50%;background:rgba(239,68,68,.2);pointer-events:none;"></div>
 
@@ -158,10 +165,9 @@
         <i id="micIcon" class="fa-solid fa-microphone" style="font-size:36px;color:#94a3b8;transition:color .2s;"></i>
       </div>
       <span id="pttText" style="font-size:11px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;">Tahan &amp; Bicara</span>
-      <span style="font-size:9px;color:#94a3b8;font-weight:500;">Push To Talk</span>
+      <span style="font-size:9px;color:#94a3b8;">Push To Talk</span>
     </button>
 
-    <!-- Volume + VU meter -->
     <div class="card" style="width:100%;padding:12px;margin-top:16px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
         <span style="font-size:10px;font-weight:600;color:var(--muted);"><i class="fa-solid fa-volume-high" style="color:#10b981;"></i> Volume</span>
@@ -183,15 +189,32 @@
   </footer>
 </section>
 
+<!-- ================= QR SCANNER MODAL ================= -->
+<div id="qrModal" class="modal">
+  <div class="card" style="width:100%;max-width:380px;padding:20px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h3 style="font-size:15px;font-weight:800;margin:0;">
+        <i class="fa-solid fa-qrcode" style="color:#10b981;"></i> Scan QR Server
+      </h3>
+      <button id="btnCloseQR" style="background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <p style="font-size:11px;color:var(--muted);margin:0 0 12px;line-height:1.6;">
+      Arahkan kamera ke QR code yang tampil di <b>terminal laptop server</b>.
+    </p>
+
+    <div id="qrReader" style="border-radius:12px;overflow:hidden;background:#000;aspect-ratio:1;"></div>
+
+    <p id="qrStatus" style="font-size:11px;text-align:center;margin-top:12px;color:var(--muted);">
+      Menunggu kamera...
+    </p>
+  </div>
+</div>
+
 <!-- ================= SCRIPT ================= -->
 <script>
-/* ============================================================
-   KONFIGURASI SERVER — diisi otomatis dari host halaman
-   ============================================================ */
-const SERVER_HOST = window.location.hostname;   // otomatis IP server
-const SERVER_PORT = 8443;
-const SERVER_PATH = '/myapp';
-
 /* ============================================================
    STATE
    ============================================================ */
@@ -199,9 +222,13 @@ const state = {
   username: '', room: '1',
   peer: null, peers: new Map(),
   localStream: null, audioCtx: null, analyser: null,
-  meterRaf: null, isTalking: false, volume: 0.8
+  meterRaf: null, isTalking: false, volume: 0.8,
+  serverHost: localStorage.getItem('intratalk-server') || '',
+  serverPort: 8443,
+  serverPath: '/myapp'
 };
 const $ = id => document.getElementById(id);
+let qrScanner = null;
 
 /* ============================================================
    TEMA
@@ -216,41 +243,150 @@ applyTheme(localStorage.getItem('intratalk-theme') || 'dark');
 $('btnTheme').onclick = () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
 
 /* ============================================================
-   DETEKSI JARINGAN
+   SERVER ADDRESS MANAGEMENT
    ============================================================ */
-async function detectNetwork() {
-  // Status online
-  const online = navigator.onLine;
-  $('netStatus').textContent = online ? '🟢 Online' : '🔴 Offline';
-  $('netStatus').style.color = online ? '#10b981' : '#ef4444';
+function loadServerFromStorage() {
+  const host = localStorage.getItem('intratalk-server');
+  if (host) {
+    state.serverHost = host;
+    $('inputServer').value = host;
+    updateServerBadge(true);
+  } else {
+    updateServerBadge(false);
+  }
+}
 
-  // IP lokal via WebRTC
+function updateServerBadge(isSet) {
+  const badge = $('serverBadge');
+  if (isSet) {
+    badge.textContent = 'TERSET';
+    badge.style.background = 'rgba(16,185,129,.2)';
+    badge.style.color = '#10b981';
+  } else {
+    badge.textContent = 'BELUM DISET';
+    badge.style.background = 'rgba(239,68,68,.2)';
+    badge.style.color = '#ef4444';
+  }
+}
+
+function saveServerAddress(host) {
+  state.serverHost = host.trim();
+  localStorage.setItem('intratalk-server', state.serverHost);
+  $('inputServer').value = state.serverHost;
+  updateServerBadge(!!state.serverHost);
+}
+
+// Input manual
+$('inputServer').addEventListener('change', (e) => {
+  const v = e.target.value.trim();
+  if (v) saveServerAddress(v);
+});
+
+/* ============================================================
+   TEST KONEKSI SERVER
+   ============================================================ */
+$('btnTestServer').onclick = async () => {
+  const host = $('inputServer').value.trim() || state.serverHost;
+  if (!host) {
+    alert('Isi alamat server terlebih dahulu');
+    return;
+  }
+  const btn = $('btnTestServer');
+  const original = btn.innerHTML;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menguji...';
+  btn.disabled = true;
+
   try {
-    const ip = await getLocalIP();
-    $('myIP').textContent = ip || 'Tidak terdeteksi';
-  } catch (e) {
-    $('myIP').textContent = 'Tidak terdeteksi';
+    // Fetch ke endpoint /peerjs/id (endpoint PeerJS yang selalu ada)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(`https://${host}:${state.serverPort}${state.serverPath}/peerjs/id`, {
+      method: 'GET',
+      mode: 'cors',
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      alert(`✅ Server terjangkau!\n\nAlamat: ${host}:${state.serverPort}\nServer siap menerima koneksi.`);
+      saveServerAddress(host);
+    } else {
+      throw new Error('HTTP ' + res.status);
+    }
+  } catch (err) {
+    console.error(err);
+    if (err.name === 'AbortError') {
+      alert(`❌ Timeout — server tidak merespons dalam 5 detik.\n\nKemungkinan:\n• Server laptop mati\n• IP salah\n• Firewall memblokir port ${state.serverPort}\n• HP tidak di Wi-Fi yang sama`);
+    } else {
+      alert(`❌ Server tidak terjangkau.\n\nError: ${err.message}\n\nCoba:\n1. Buka https://${host}:${state.serverPort} di tab baru HP, klik "Advanced → Proceed" untuk menerima sertifikat.\n2. Pastikan firewall laptop mengizinkan port ${state.serverPort}.\n3. Pastikan HP & laptop di Wi-Fi yang sama.`);
+    }
+  } finally {
+    btn.innerHTML = original;
+    btn.disabled = false;
+  }
+};
+
+/* ============================================================
+   QR SCANNER
+   ============================================================ */
+$('btnScanQR').onclick = async () => {
+  $('qrModal').classList.add('open');
+  $('qrStatus').textContent = 'Memulai kamera...';
+
+  try {
+    qrScanner = new Html5Qrcode('qrReader');
+    await qrScanner.start(
+      { facingMode: 'environment' },   // kamera belakang
+      {
+        fps: 10,
+        qrbox: { width: 240, height: 240 }
+      },
+      onScanSuccess,
+      (err) => { /* abaikan frame tanpa QR */ }
+    );
+    $('qrStatus').textContent = 'Arahkan kamera ke QR di layar laptop';
+  } catch (err) {
+    console.error(err);
+    $('qrStatus').textContent = 'Kamera tidak dapat diakses: ' + err.message;
+  }
+};
+
+function onScanSuccess(decodedText) {
+  // Format QR: "192.168.1.100:8443"
+  const cleaned = decodedText.trim();
+  const match = cleaned.match(/^(\d+\.\d+\.\d+\.\d+)(?::(\d+))?$/);
+
+  if (!match) {
+    $('qrStatus').textContent = '❌ QR bukan format server IntraTalk';
+    $('qrStatus').style.color = '#ef4444';
+    return;
   }
 
-  $('serverIP').textContent = SERVER_HOST;
+  const host = match[1];
+  const port = match[2] ? parseInt(match[2]) : 8443;
+
+  state.serverPort = port;
+  saveServerAddress(host);
+
+  $('qrStatus').textContent = `✅ Server terdeteksi: ${host}:${port}`;
+  $('qrStatus').style.color = '#10b981';
+
+  // Beep + tutup modal
+  beep('start');
+  setTimeout(() => closeQRModal(), 800);
 }
 
-async function getLocalIP() {
-  return new Promise((resolve) => {
-    const pc = new RTCPeerConnection({ iceServers: [] });
-    pc.createDataChannel('');
-    pc.onicecandidate = (e) => {
-      if (!e.candidate) { pc.close(); return resolve(null); }
-      const m = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/);
-      if (m && !m[1].startsWith('127.')) { pc.close(); resolve(m[1]); }
-    };
-    pc.createOffer().then(o => pc.setLocalDescription(o));
-    setTimeout(() => { pc.close(); resolve(null); }, 2000);
-  });
+async function closeQRModal() {
+  if (qrScanner) {
+    try { await qrScanner.stop(); } catch(e) {}
+    try { qrScanner.clear(); } catch(e) {}
+    qrScanner = null;
+  }
+  $('qrModal').classList.remove('open');
 }
 
-window.addEventListener('online',  () => { $('netStatus').textContent = '🟢 Online'; $('netStatus').style.color = '#10b981'; });
-window.addEventListener('offline', () => { $('netStatus').textContent = '🔴 Offline'; $('netStatus').style.color = '#ef4444'; });
+$('btnCloseQR').onclick = closeQRModal;
 
 /* ============================================================
    BEEP
@@ -281,8 +417,14 @@ function beep(type = 'start') {
 $('btnJoin').onclick = async () => {
   const name = $('inputName').value.trim();
   const room = ($('inputRoom').value || '1').toString().trim();
+  const serverHost = $('inputServer').value.trim();
+
   if (!name) return showError('Nama wajib diisi');
   if (!/^\d{1,3}$/.test(room)) return showError('Channel 1-999');
+  if (!serverHost) return showError('Scan QR server atau isi alamat server dulu');
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(serverHost)) return showError('Format IP server tidak valid');
+
+  saveServerAddress(serverHost);
 
   $('btnJoin').disabled = true;
   $('btnJoin').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyiapkan...';
@@ -322,22 +464,18 @@ function showError(msg) {
 }
 
 /* ============================================================
-   PEERJS — KONEKSI KE SERVER LOKAL
+   PEERJS
    ============================================================ */
-const ROOM_PREFIX = 'intratalk-room-';
-
 function connectPeer() {
   const myId = 'it-' + Math.random().toString(36).slice(2, 10);
 
   state.peer = new Peer(myId, {
-    host: SERVER_HOST,
-    port: SERVER_PORT,
-    path: SERVER_PATH,
-    secure: true,           // server pakai HTTPS
+    host: state.serverHost,
+    port: state.serverPort,
+    path: state.serverPath,
+    secure: true,
     debug: 1,
-    config: {
-      iceServers: []        // LAN → tanpa STUN/TURN
-    }
+    config: { iceServers: [] }
   });
 
   state.peer.on('open', () => {
@@ -350,20 +488,21 @@ function connectPeer() {
   state.peer.on('error', (err) => {
     console.error('Peer error:', err);
     setStatus('error', 'Server tidak terjangkau');
-    if (err.type === 'peer-unavailable') {
-      setTimeout(joinRoom, 1000);
-    }
+    if (err.type === 'peer-unavailable') setTimeout(joinRoom, 1000);
   });
 
   state.peer.on('call', (call) => {
     call.answer(state.localStream);
-    call.on('stream', (remoteStream) => attachRemoteAudio(call.peer, remoteStream));
+    call.on('stream', (s) => attachRemoteAudio(call.peer, s));
   });
 
   state.peer.on('connection', (conn) => {
     handleDataConnection(conn);
   });
 }
+
+let isHost = false;
+const ROOM_PREFIX = 'intratalk-room-';
 
 function joinRoom() {
   const hostId = ROOM_PREFIX + state.room;
@@ -374,20 +513,18 @@ function joinRoom() {
     opened = true;
     conn.send({ type: 'join', name: state.username });
   });
-  conn.on('data', (d) => handleDataConnection_message(conn, d));
+  conn.on('data', d => handleDataConnection_message(conn, d));
   conn.on('close', () => setTimeout(joinRoom, 1500));
 
-  // Kalau host belum ada, jadi host
   setTimeout(() => { if (!opened && !isHost) becomeHost(); }, 1800);
 }
-
-let isHost = false;
 
 function becomeHost() {
   if (isHost) return;
   isHost = true;
   setStatus('ready', 'Anda host channel');
   $('pttBtn').disabled = false;
+  $('pttBtn').style.opacity = '1';
 }
 
 function handleDataConnection(conn) {
@@ -395,7 +532,7 @@ function handleDataConnection(conn) {
     const info = conn.metadata || {};
     addPeer(conn.peer, info.name || 'Anonim', conn);
   });
-  conn.on('data', (d) => handleDataConnection_message(conn, d));
+  conn.on('data', d => handleDataConnection_message(conn, d));
   conn.on('close', () => removePeer(conn.peer));
 }
 
@@ -428,7 +565,7 @@ function connectToPeer(remoteId) {
   conn.on('open', () => {
     addPeer(remoteId, 'Peer', conn);
     const call = state.peer.call(remoteId, state.localStream, { metadata: { name: state.username } });
-    if (call) call.on('stream', (s) => attachRemoteAudio(remoteId, s));
+    if (call) call.on('stream', s => attachRemoteAudio(remoteId, s));
   });
   conn.on('data', d => handleDataConnection_message(conn, d));
   conn.on('close', () => removePeer(remoteId));
@@ -512,8 +649,8 @@ function stopTalk() {
 }
 
 const pttBtn = $('pttBtn');
-pttBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); startTalk(); });
-pttBtn.addEventListener('pointerup', (e) => { e.preventDefault(); stopTalk(); });
+pttBtn.addEventListener('pointerdown', e => { e.preventDefault(); startTalk(); });
+pttBtn.addEventListener('pointerup', e => { e.preventDefault(); stopTalk(); });
 pttBtn.addEventListener('pointerleave', () => stopTalk());
 pttBtn.addEventListener('pointercancel', () => stopTalk());
 pttBtn.addEventListener('contextmenu', e => e.preventDefault());
@@ -560,17 +697,19 @@ function setStatus(mode, text) {
 /* ============================================================
    INIT
    ============================================================ */
-detectNetwork();
-$('volumeSlider').addEventListener('input', (e) => {
+loadServerFromStorage();
+
+$('volumeSlider').addEventListener('input', e => {
   state.volume = e.target.value / 100;
   $('volumeValue').textContent = e.target.value + '%';
   state.peers.forEach(p => { if (p.audioEl) p.audioEl.volume = state.volume; });
 });
+
 $('btnLeave').onclick = () => location.reload();
 
-// Cegah scroll bounce di HP
-document.addEventListener('touchmove', (e) => {
-  if (!e.target.closest('input')) e.preventDefault();
+// Cegah pull-to-refresh tambahan (untuk iOS)
+document.addEventListener('touchmove', e => {
+  if (!e.target.closest('input') && !e.target.closest('#qrReader')) e.preventDefault();
 }, { passive: false });
 </script>
 </body>
