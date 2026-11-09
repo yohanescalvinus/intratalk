@@ -76,7 +76,7 @@ peerServer.on('disconnect', (client) => {
 // ============================================================
 // 5. START + TAMPILKAN QR CODE
 // ============================================================
-const PORT = 8443;
+const PORT = 443;
 server.listen(PORT, '0.0.0.0', () => {
   const nets = os.networkInterfaces();
   const ips = [];
