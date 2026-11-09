@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>IntraTalk PTT — LAN</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } } }
+    </script>
+    <style>
+        body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; user-select: none; }
+        .ptt-button { touch-action: none; transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s; }
+        .ptt-button.talking { transform: scale(0.92); box-shadow: 0 0 50px rgba(239, 68, 68, 0.7), inset 0 6px 20px rgba(0,0,0,0.5) !important; background: radial-gradient(circle, #ef4444 0%, #b91c1c 100%) !important; border-color: #dc2626 !important; }
+        .pulse-wave { animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite; }
+        @keyframes pulse-ring { 0% { transform: scale(0.95); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 0.3; } 100% { transform: scale(0.95); opacity: 0.8; } }
+        .speaking-avatar { animation: speakPulse 1s infinite alternate; border-color: #ef4444 !important; }
+        @keyframes speakPulse { from { box-shadow: 0 0 5px #ef4444; } to { box-shadow: 0 0 20px #ef4444; } }
+        .lock-active { background-color: #ef4444 !important; color: white !important; border-color: #b91c1c !important; }
+        #btnLock { cursor: grab; touch-action: none; }
+        #btnLock:active { cursor: grabbing; transform: scale(1.1); }
+        
+        .chat-bubble-me { background-color: #10b981; color: white; border-radius: 12px 12px 0 12px; }
+        .chat-bubble-other { background-color: #334155; color: white; border-radius: 12px 12px 12px 0; }
+        .chat-bubble-admin { background-color: #ef4444; color: white; border-radius: 12px; border: 2px solid #f87171; }
+        
+        @keyframes shake-alert {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .buzzer-active { animation: shake-alert 0.5s infinite; background-color: #ef4444 !important; color: white !important; border-color: #b91c1c !important;}
+
+        .chat-badge {
+            position: absolute; top: -5px; right: -5px;
+            background-color: #ef4444; color: white;
+            font-size: 10px; font-weight: bold;
+            width: 20px; height: 20px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-[100dvh] flex flex-col font-sans antialiased transition-colors duration-300">
+
+    <!-- LOGIN -->
+    <div id="screenLogin" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-5 bg-slate-100 dark:bg-slate-950 w-full h-[100dvh] transition-colors duration-300">
+        <div class="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl">
+            <div class="text-center mb-8">
+                <div class="inline-flex w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 items-center justify-center text-emerald-500 mb-4">
+                    <i class="fa-solid fa-walkie-talkie text-3xl"></i>
+                </div>
+                <h1 class="font-extrabold text-2xl">IntraTalk <span class="text-emerald-500">PTT</span></h1>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5">Nama Panggilan</label>
+                    <input type="text" id="loginName" placeholder="Masukkan nama" maxlength="16" class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl py-3 px-4 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-emerald-500 transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5">Channel</label>
+                    <input type="number" id="loginRoom" value="1" min="1" max="99" class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 rounded-xl py-3 px-4 text-emerald-600 dark:text-emerald-400 font-mono font-bold text-lg focus:outline-none focus:border-emerald-500 transition">
+                </div>
+                <button id="btnJoin" class="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm mt-2 transition">
+                    <i class="fa-solid fa-right-to-bracket mr-2"></i> Masuk Channel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP -->
+    <div id="screenApp" class="flex flex-col w-full max-w-md mx-auto h-[100dvh] px-4 pt-4 pb-2 justify-between">
+        
+        <!-- HEADER -->
+        <header class="flex flex-col mb-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl shadow-sm transition-colors gap-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500 shrink-0">
+                        <i class="fa-solid fa-walkie-talkie text-sm"></i>
+                    </div>
+                    <div class="flex flex-col">
+                        <h1 class="font-bold text-xs leading-tight">IntraTalk</h1>
+                        <p id="headerUser" class="text-[10px] text-slate-500 dark:text-slate-400">@BelumMasuk</p>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-end mr-2">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase">Waktu Server</span>
+                    <span id="serverClock" class="text-sm font-mono font-black text-blue-500 tracking-wider">--:--:--</span>
+                </div>
+
+                <div class="flex gap-1.5 shrink-0">
+                    <button id="btnTheme" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition">
+                        <i id="themeIcon" class="fa-solid fa-moon text-xs"></i>
+                    </button>
+                    <button id="btnSettings" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition">
+                        <i class="fa-solid fa-headphones text-xs"></i>
+                    </button>
+                    <button id="btnLogout" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 flex items-center justify-center transition">
+                        <i class="fa-solid fa-right-from-bracket text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="w-full bg-emerald-500 text-white rounded-xl py-2.5 flex items-center justify-center shadow-md transition-colors" id="channelDisplay">
+                <span class="text-xs font-bold opacity-80 mr-2 mt-1">CHANNEL</span>
+                <span id="headerChannel" class="text-5xl font-black font-mono tracking-widest drop-shadow-md">#1</span>
+            </div>
+        </header>
+
+        <!-- USER LIST -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 mb-2 shrink-0 shadow-sm transition-colors">
+            <div class="flex items-center justify-between mb-2 px-1">
+                <span class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider"><i class="fa-solid fa-users text-emerald-500 mr-1"></i> Pengguna</span>
+                <span id="statusText" class="text-[10px] font-bold text-amber-500">Menghubungkan...</span>
+            </div>
+            <div id="userList" class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide"></div>
+        </div>
+
+        <!-- AREA TOMBOL PTT, CHAT, & BUZZER -->
+        <div class="flex-1 flex flex-col items-center justify-center relative min-h-[230px]">
+            <div id="ringEffect" class="hidden absolute w-72 h-72 rounded-full bg-red-600/20 pulse-wave pointer-events-none"></div>
+            
+            <button id="pttBtn" disabled class="ptt-button relative w-52 h-52 rounded-full bg-gradient-to-b from-white to-slate-200 dark:from-slate-800 dark:to-slate-900 border-[6px] border-slate-300 dark:border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.2)] dark:shadow-2xl flex flex-col items-center justify-center gap-3 disabled:opacity-50 transition-colors mb-6">
+                <div class="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 flex items-center justify-center shadow-inner">
+                    <i id="micIcon" class="fa-solid fa-microphone text-4xl text-slate-400 dark:text-slate-500 transition-colors"></i>
+                </div>
+                <span id="pttText" class="text-sm font-black tracking-widest text-slate-600 dark:text-slate-300 uppercase">TAHAN</span>
+            </button>
+
+            <div class="flex gap-4">
+                <button id="btnChat" class="relative w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center shadow-lg transition active:scale-95">
+                    <i class="fa-solid fa-comment-dots text-2xl"></i>
+                    <span id="chatBadge" class="chat-badge hidden">0</span>
+                </button>
+                <button id="btnBuzzer" class="w-14 h-14 rounded-full bg-amber-500 hover:bg-amber-400 text-white flex items-center justify-center shadow-lg transition active:scale-95">
+                    <i class="fa-solid fa-bell text-2xl"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- KONTROL BAWAH -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col gap-2 shrink-0 shadow-sm transition-colors mt-2">
+            <div class="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <span><i class="fa-solid fa-volume-high"></i> Volume Suara</span>
+                <span id="volumeValue" class="font-mono text-emerald-500">80%</span>
+            </div>
+            <input type="range" id="volumeSlider" min="0" max="100" value="80" class="w-full accent-emerald-500 bg-slate-200 dark:bg-slate-800 rounded-lg h-2 cursor-pointer">
+        </div>
+    </div>
+
+    <!-- TOMBOL LOCK (FLOATING) -->
+    <button id="btnLock" class="fixed z-[999] w-12 h-12 rounded-full bg-slate-800 border border-slate-600 text-white flex items-center justify-center shadow-2xl transition-transform" style="top: 45%; right: 16px;">
+        <i id="lockIcon" class="fa-solid fa-unlock text-lg"></i>
+    </button>
+
+    <!-- MODAL CHAT -->
+    <div id="chatModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[1000] flex flex-col justify-end">
+        <div class="bg-white dark:bg-slate-900 w-full h-[80vh] rounded-t-3xl shadow-2xl flex flex-col">
+            <!-- Header Chat (Dengan Tombol Clear) -->
+            <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+                <h3 class="font-bold text-lg text-slate-800 dark:text-slate-100"><i class="fa-solid fa-comments text-blue-500 mr-2"></i> Chat Channel</h3>
+                <div class="flex gap-2">
+                    <button id="btnClearChat" class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500 hover:text-red-700 transition" title="Bersihkan Layar">
+                        <i class="fa-solid fa-broom"></i>
+                    </button>
+                    <button id="btnCloseChat" class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col"></div>
+            <div class="p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 flex gap-2">
+                <input type="text" id="chatInput" placeholder="Ketik pesan..." class="flex-1 bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500 dark:text-white">
+                <button id="btnSendChat" class="w-12 h-12 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-md transition active:scale-95">
+                    <i class="fa-solid fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SETTINGS -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-slate-900/50 dark:bg-slate-950/80 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl">
+            <h3 class="font-bold text-sm mb-4 text-slate-800 dark:text-slate-100"><i class="fa-solid fa-sliders text-emerald-500"></i> Pengaturan Audio</h3>
+            
+            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Mikrofon Input</label>
+            <select id="audioInputSelect" class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs rounded-xl p-3 mb-3">
+                <option value="">Default HP</option>
+            </select>
+
+            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Speaker Output</label>
+            <select id="audioOutputSelect" class="w-full bg-slate-100 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs rounded-xl p-3 mb-4">
+                <option value="">Default HP</option>
+            </select>
+
+            <button id="btnApplyAudio" class="w-full py-2.5 bg-emerald-600 text-white rounded-lg text-xs font-bold mb-2">Terapkan</button>
+            <button id="btnCloseSettings" class="w-full py-2 text-slate-500 dark:text-slate-400 text-xs hover:text-slate-800 dark:hover:text-white">Tutup</button>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            username: '', room: '1', ws: null, peers: new Map(),
+            localStream: null, isTalking: false, isLocked: false, 
+            volume: 0.8, audioContext: null, analyser: null, sessionId: null, 
+            isManualDisconnect: false, users: {}, myId: null,
+            unreadChatCount: 0
+        };
+        const $ = id => document.getElementById(id);
+
+        let globalAudioCtx = null;
+        function unlockAudio() {
+            if (!globalAudioCtx) globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (globalAudioCtx.state === 'suspended') globalAudioCtx.resume();
+        }
+        document.body.addEventListener('touchstart', unlockAudio, { once: true });
+        document.body.addEventListener('click', unlockAudio, { once: true });
+
+        const themeIcon = $('themeIcon');
+        function setTheme(isDark) {
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+                themeIcon.className = 'fa-solid fa-sun text-xs text-amber-500';
+                localStorage.setItem('it_theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+                themeIcon.className = 'fa-solid fa-moon text-xs text-slate-600';
+                localStorage.setItem('it_theme', 'light');
+            }
+        }
+        setTheme(localStorage.getItem('it_theme') !== 'light');
+        $('btnTheme').onclick = () => setTheme(!document.documentElement.classList.contains('dark'));
+
+        const lockBtn = $('btnLock');
+        const lockIcon = $('lockIcon');
+        let isDraggingLock = false;
+        let startX, startY, initialX, initialY;
+
+        lockBtn.addEventListener('pointerdown', (e) => {
+            isDraggingLock = true; startX = e.clientX; startY = e.clientY;
+            const rect = lockBtn.getBoundingClientRect();
+            initialX = rect.left; initialY = rect.top;
+            lockBtn.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!isDraggingLock) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            let newX = initialX + dx; let newY = initialY + dy;
+            newX = Math.max(0, Math.min(newX, window.innerWidth - 48));
+            newY = Math.max(0, Math.min(newY, window.innerHeight - 48));
+            lockBtn.style.left = newX + 'px'; lockBtn.style.top = newY + 'px'; lockBtn.style.right = 'auto';
+        });
+
+        window.addEventListener('pointerup', () => { isDraggingLock = false; lockBtn.style.cursor = 'grab'; });
+
+        lockBtn.addEventListener('click', (e) => {
+            if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) return;
+            if(state.isLocked) {
+                state.isLocked = false;
+                lockIcon.className = 'fa-solid fa-unlock text-lg';
+                lockBtn.classList.remove('lock-active'); lockBtn.classList.add('bg-slate-800');
+                $('channelDisplay').classList.replace('bg-red-500', 'bg-emerald-500');
+                setStatus('Siap Mendengarkan', 'ready');
+            } else {
+                state.isLocked = true;
+                lockIcon.className = 'fa-solid fa-lock text-lg';
+                lockBtn.classList.add('lock-active'); lockBtn.classList.remove('bg-slate-800');
+                $('channelDisplay').classList.replace('bg-emerald-500', 'bg-red-500');
+                setStatus('Terkunci', 'error');
+            }
+        });
+
+        function playBeep(type = 'start') {
+            if (!globalAudioCtx) unlockAudio();
+            const ctx = globalAudioCtx;
+            if (!ctx) return;
+
+            try {
+                const osc = ctx.createOscillator(); 
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+
+                if (type === 'start') {
+                    osc.frequency.setValueAtTime(700, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
+                    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.07);
+                    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.07);
+                } else if (type === 'busy') {
+                    osc.frequency.setValueAtTime(400, ctx.currentTime);
+                    osc.frequency.setValueAtTime(400, ctx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
+                } else if (type === 'chat') {
+                    osc.frequency.setValueAtTime(800, ctx.currentTime);
+                    osc.frequency.setValueAtTime(1000, ctx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+                } else if (type === 'alarm') {
+                    const playAlarmPattern = (startTime) => {
+                        osc.frequency.setValueAtTime(1000, startTime);
+                        gain.gain.setValueAtTime(0.1, startTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.15);
+                        osc.frequency.setValueAtTime(1000, startTime + 0.25);
+                        gain.gain.setValueAtTime(0.1, startTime + 0.25);
+                        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.4);
+                    };
+                    playAlarmPattern(ctx.currentTime);        
+                    playAlarmPattern(ctx.currentTime + 0.6);  
+                    playAlarmPattern(ctx.currentTime + 1.2);  
+                    osc.start(ctx.currentTime); 
+                    osc.stop(ctx.currentTime + 1.6);
+                } else {
+                    osc.frequency.setValueAtTime(1000, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+                    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.12);
+                }
+            } catch (e) {}
+        }
+
+        $('btnJoin').onclick = async () => {
+            const name = $('loginName').value.trim();
+            if (!name) return alert('Isi nama!');
+            $('btnJoin').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
+            
+            state.username = name;
+            state.room = $('loginRoom').value || '1';
+            sessionStorage.setItem('it_user', state.username);
+            sessionStorage.setItem('it_room', state.room);
+
+            try {
+                if (!state.localStream) {
+                    state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    state.localStream.getAudioTracks().forEach(t => t.enabled = false);
+                    state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    state.analyser = state.audioContext.createAnalyser();
+                    state.audioContext.createMediaStreamSource(state.localStream).connect(state.analyser);
+                }
+
+                $('screenLogin').classList.add('hidden');
+                $('headerUser').innerText = '@' + state.username;
+                $('headerChannel').innerText = '#' + state.room;
+
+                state.users['self'] = state.username;
+                renderUserList();
+
+                await updateAudioDevices();
+                connectWebSocket();
+                await requestWakeLock(); 
+            } catch (err) {
+                alert('Gagal akses mic: ' + err.message);
+                $('btnJoin').innerHTML = 'Masuk Channel';
+            }
+        };
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            state.ws = new WebSocket(protocol + window.location.host + '/ws');
+            
+            state.ws.onopen = () => {
+                setStatus('Siap Mendengarkan', 'ready');
+                $('pttBtn').disabled = false;
+                state.ws.send(JSON.stringify({ type: 'join', name: state.username, room: state.room, session_id: state.sessionId }));
+            };
+
+            state.ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'session_created') {
+                    state.sessionId = data.session_id;
+                    state.myId = data.session_id;
+                }
+                else if (data.type === 'server-time') {
+                    $('serverClock').innerText = data.time;
+                }
+                else if (data.type === 'user-list') {
+                    data.users.forEach(u => {
+                        state.users[u.id] = u.name;
+                        if (!state.peers.has(u.id)) createPeerConnection(u.id, true);
+                    });
+                    renderUserList();
+                }
+                else if (data.type === 'peer-joined') {
+                    state.users[data.id] = data.name;
+                    renderUserList();
+                    if (!state.peers.has(data.id)) createPeerConnection(data.id, true);
+                } 
+                else if (data.type === 'peer-left') {
+                    if (state.peers.has(data.id)) {
+                        state.peers.get(data.id).close();
+                        state.peers.delete(data.id);
+                    }
+                    delete state.users[data.id];
+                    renderUserList();
+                } 
+                else if (data.type === 'signal') {
+                    let pc = state.peers.get(data.id);
+                    if (!pc) pc = createPeerConnection(data.id, false);
+                    if (data.sdp) {
+                        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                        if (data.sdp.type === 'offer') {
+                            const answer = await pc.createAnswer();
+                            await pc.setLocalDescription(answer);
+                            sendSignal(data.id, { sdp: pc.localDescription });
+                        }
+                    } else if (data.candidate) {
+                        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    }
+                }
+                else if (data.type === 'talk-granted') {
+                    state.isTalking = true;
+                    state.localStream.getAudioTracks().forEach(t => t.enabled = true);
+                    playBeep('start');
+                    pttBtn.classList.add('talking');
+                    $('micIcon').style.color = '#fff';
+                    $('pttText').innerText = 'BICARA';
+                    $('ringEffect').classList.remove('hidden');
+                    setStatus('Menyiarkan...', 'talking');
+                }
+                else if (data.type === 'talk-denied') {
+                    playBeep('busy');
+                    setStatus('Channel Sibuk!', 'error');
+                    $('pttText').innerText = 'SIBUK';
+                    setTimeout(() => { if(!state.isTalking) $('pttText').innerText = 'TAHAN'; setStatus('Siap Mendengarkan', 'ready'); }, 1500);
+                }
+                else if (data.type === 'talk-start') {
+                    setStatus(data.name + ' sedang bicara...', 'receiving');
+                    const avatar = document.getElementById('avatar-' + data.id);
+                    if (avatar) avatar.classList.add('speaking-avatar');
+                }
+                else if (data.type === 'talk-stop') {
+                    setStatus('Siap Mendengarkan', 'ready');
+                    playBeep('roger');
+                    const avatar = document.getElementById('avatar-' + data.id);
+                    if (avatar) avatar.classList.remove('speaking-avatar');
+                }
+                else if (data.type === 'chat-message') {
+                    addChatMessage(data.name, data.text, data.id === state.myId, data.id === 'admin' || data.id === 'system');
+                    
+                    if (data.id !== state.myId) {
+                        if ($('chatModal').classList.contains('hidden')) {
+                            playBeep('chat');
+                            state.unreadChatCount++;
+                            const badge = $('chatBadge');
+                            badge.innerText = state.unreadChatCount;
+                            badge.classList.remove('hidden');
+                        } else {
+                            playBeep('chat');
+                        }
+                    }
+                }
+                else if (data.type === 'receive-buzzer') {
+                    playBeep('alarm');
+                    const buzzerBtn = $('btnBuzzer');
+                    buzzerBtn.classList.add('buzzer-active');
+                    
+                    if (data.id === 'admin') {
+                        setStatus('🚨 ALARM PUSAT KOMANDO 🚨', 'error');
+                    } else {
+                        setStatus('📳 BUZZER dari ' + data.name, 'error');
+                    }
+                    
+                    setTimeout(() => {
+                        buzzerBtn.classList.remove('buzzer-active');
+                        if(!state.isTalking) setStatus('Siap Mendengarkan', 'ready');
+                    }, 3500);
+                }
+            };
+
+            state.ws.onclose = (event) => {
+                if (state.isManualDisconnect) return;
+                
+                if (event.code === 4001) {
+                    alert("🚫 Anda telah dikeluarkan oleh Pusat Komando.");
+                    sessionStorage.removeItem('it_user');
+                    sessionStorage.removeItem('it_room');
+                    window.location.reload();
+                    return;
+                }
+
+                setStatus('Terputus...', 'error');
+                $('pttBtn').disabled = true;
+                
+                const selfName = state.users['self'];
+                state.users = { 'self': selfName };
+                state.peers.forEach(pc => pc.close());
+                state.peers.clear();
+                renderUserList();
+
+                setTimeout(() => { if (!state.isManualDisconnect) connectWebSocket(); }, 2000);
+            };
+        }
+
+        function createPeerConnection(peerId, isInitiator) {
+            const pc = new RTCPeerConnection({ iceServers: [] });
+            state.localStream.getTracks().forEach(track => pc.addTrack(track, state.localStream));
+            
+            pc.onicecandidate = e => { if (e.candidate) sendSignal(peerId, { candidate: e.candidate }); };
+            pc.ontrack = e => {
+                const remoteStream = e.streams[0];
+                let audioEl = document.getElementById('audio-' + peerId);
+                if (!audioEl) {
+                    audioEl = document.createElement('audio');
+                    audioEl.id = 'audio-' + peerId;
+                    audioEl.autoplay = true;
+                    audioEl.volume = state.volume;
+                    document.body.appendChild(audioEl);
+                }
+                audioEl.srcObject = remoteStream;
+                const selectedDevice = $('audioOutputSelect').value;
+                if (selectedDevice && audioEl.setSinkId) audioEl.setSinkId(selectedDevice).catch(e => console.log(e));
+            };
+            if (isInitiator) {
+                pc.onnegotiationneeded = async () => {
+                    const offer = await pc.createOffer();
+                    await pc.setLocalDescription(offer);
+                    sendSignal(peerId, { sdp: pc.localDescription });
+                };
+            }
+            state.peers.set(peerId, pc);
+            return pc;
+        }
+
+        function sendSignal(targetId, signalData) {
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({ type: 'signal', target: targetId, ...signalData }));
+            }
+        }
+
+        const pttBtn = $('pttBtn');
+        function startTalk(e) {
+            if (e) e.preventDefault();
+            if (state.isLocked) return;
+            if (state.isTalking || !state.localStream) return;
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({ type: 'request-talk' }));
+            }
+        }
+
+        function stopTalk(e) {
+            if (e) e.preventDefault();
+            if (!state.isTalking) return;
+            
+            state.isTalking = false;
+            state.localStream.getAudioTracks().forEach(t => t.enabled = false);
+            playBeep('roger');
+            pttBtn.classList.remove('talking');
+            $('micIcon').style.color = ''; 
+            $('pttText').innerText = 'TAHAN';
+            $('ringEffect').classList.add('hidden');
+            setStatus('Siap Mendengarkan', 'ready');
+
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({ type: 'release-talk' }));
+            }
+        }
+
+        pttBtn.addEventListener('pointerdown', startTalk);
+        pttBtn.addEventListener('pointerup', stopTalk);
+        pttBtn.addEventListener('pointerleave', stopTalk);
+        pttBtn.addEventListener('pointercancel', stopTalk);
+
+        $('btnBuzzer').onclick = () => {
+            if (state.isLocked) return;
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({ type: 'send-buzzer' }));
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        };
+
+        $('btnChat').onclick = () => {
+            if(state.isLocked) return;
+            $('chatModal').classList.remove('hidden');
+            state.unreadChatCount = 0;
+            $('chatBadge').classList.add('hidden');
+
+            setTimeout(() => {
+                const chatMsgs = $('chatMessages');
+                chatMsgs.scrollTop = chatMsgs.scrollHeight;
+            }, 100);
+        };
+
+        $('btnCloseChat').onclick = () => $('chatModal').classList.add('hidden');
+
+        // FITUR CLEAR CHAT DI HP USER
+        $('btnClearChat').onclick = () => {
+            if(confirm('Bersihkan layar chat ini? (Tidak menghapus di server)')) {
+                $('chatMessages').innerHTML = '';
+            }
+        };
+
+        $('btnSendChat').onclick = () => {
+            const text = $('chatInput').value.trim();
+            if (!text) return;
+            if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+                state.ws.send(JSON.stringify({ type: 'chat-message', text: text }));
+                $('chatInput').value = '';
+            }
+        };
+
+        $('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') $('btnSendChat').click();
+        });
+
+        function addChatMessage(senderName, text, isMe, isSystem) {
+            const container = $('chatMessages');
+            const div = document.createElement('div');
+            
+            if (isSystem) {
+                div.className = 'flex flex-col items-center w-full my-2';
+                div.innerHTML = `
+                    <span class="text-[10px] font-bold text-red-500 mb-1"><i class="fa-solid fa-bullhorn"></i> ${senderName}</span>
+                    <div class="chat-bubble-admin px-4 py-2 text-sm font-bold max-w-[90%] text-center shadow-lg">
+                        ${text}
+                    </div>
+                `;
+            } else {
+                div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+                const bubbleClass = isMe ? 'chat-bubble-me' : 'chat-bubble-other';
+                div.innerHTML = `
+                    <span class="text-[9px] text-slate-500 dark:text-slate-400 mb-1 px-1">${isMe ? 'Anda' : senderName}</span>
+                    <div class="${bubbleClass} px-3 py-2 text-sm max-w-[80%] break-words">${text}</div>
+                `;
+            }
+            
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        const volumeSlider = $('volumeSlider');
+        const volumeValue = $('volumeValue');
+
+        function applyVolume(val) {
+            state.volume = val;
+            volumeValue.innerText = Math.round(val * 100) + '%';
+            volumeSlider.value = val * 100; 
+            state.peers.forEach((pc, id) => {
+                const audioEl = document.getElementById('audio-' + id);
+                if (audioEl) audioEl.volume = val;
+            });
+        }
+
+        volumeSlider.addEventListener('input', (e) => {
+            applyVolume(e.target.value / 100);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (state.isLocked) return;
+            if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp' || e.keyCode === 175) {
+                applyVolume(Math.min(1.0, state.volume + 0.1));
+            } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown' || e.keyCode === 174) {
+                applyVolume(Math.max(0.0, state.volume - 0.1));
+            }
+        });
+
+        function setStatus(text, mode) {
+            $('statusText').innerText = text;
+            if (mode === 'ready') $('statusText').className = 'text-[10px] font-bold text-emerald-500';
+            else if (mode === 'talking') $('statusText').className = 'text-[10px] font-bold text-red-500 animate-pulse';
+            else if (mode === 'receiving') $('statusText').className = 'text-[10px] font-bold text-amber-500';
+            else $('statusText').className = 'text-[10px] font-bold text-red-600';
+        }
+
+        function renderUserList() {
+            const container = $('userList');
+            container.innerHTML = '';
+            const colors = ['bg-emerald-500', 'bg-blue-500', 'bg-purple-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
+            
+            Object.entries(state.users).forEach(([id, name]) => {
+                const initial = name.charAt(0).toUpperCase();
+                const color = colors[name.charCodeAt(0) % colors.length];
+                const isSelf = id === 'self';
+                container.innerHTML += `
+                    <div class="flex flex-col items-center min-w-[50px]">
+                        <div id="${isSelf ? 'avatar-self' : 'avatar-' + id}" class="w-10 h-10 rounded-full ${color} border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center text-sm font-bold text-white shadow-sm transition-all">
+                            ${initial}
+                        </div>
+                        <span class="text-[9px] text-slate-500 dark:text-slate-400 mt-1 truncate w-12 text-center">${isSelf ? 'Anda' : name}</span>
+                    </div>
+                `;
+            });
+        }
+
+        async function updateAudioDevices() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const inputSelect = $('audioInputSelect');
+                const outputSelect = $('audioOutputSelect');
+                
+                inputSelect.innerHTML = '<option value="">Default HP</option>';
+                outputSelect.innerHTML = '<option value="">Default HP</option>';
+                
+                devices.forEach(device => {
+                    if (device.kind === 'audioinput') {
+                        inputSelect.innerHTML += `<option value="${device.deviceId}">${device.label || 'Mikrofon'}</option>`;
+                    } else if (device.kind === 'audiooutput') {
+                        outputSelect.innerHTML += `<option value="${device.deviceId}">${device.label || 'Speaker'}</option>`;
+                    }
+                });
+            } catch (e) {}
+        }
+
+        $('btnSettings').onclick = () => { if(!state.isLocked) { $('settingsModal').classList.remove('hidden'); updateAudioDevices(); } };
+        $('btnCloseSettings').onclick = () => $('settingsModal').classList.add('hidden');
+        
+        $('btnApplyAudio').onclick = async () => {
+            const inputId = $('audioInputSelect').value;
+            const outputId = $('audioOutputSelect').value;
+
+            state.peers.forEach((pc, id) => {
+                const audioEl = document.getElementById('audio-' + id);
+                if (audioEl && audioEl.setSinkId) {
+                    audioEl.setSinkId(outputId).catch(e => console.log("Gagal ganti output:", e));
+                }
+            });
+
+            try {
+                const constraints = { audio: inputId ? { deviceId: { exact: inputId } } : true };
+                const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                const newTrack = newStream.getAudioTracks()[0];
+                newTrack.enabled = state.isTalking;
+
+                state.peers.forEach(pc => {
+                    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+                    if (sender) sender.replaceTrack(newTrack);
+                });
+
+                if (state.localStream) state.localStream.getTracks().forEach(t => t.stop());
+                state.localStream = newStream;
+                $('settingsModal').classList.add('hidden');
+            } catch (err) {
+                alert('Gagal mengganti Mikrofon: ' + err.message);
+            }
+        };
+
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+        }
+
+        window.onload = () => {
+            const savedUser = sessionStorage.getItem('it_user');
+            const savedRoom = sessionStorage.getItem('it_room');
+            if (savedUser && savedRoom) {
+                $('loginName').value = savedUser;
+                $('loginRoom').value = savedRoom;
+                $('btnJoin').click(); 
+            }
+        };
+
+        $('btnLogout').onclick = () => {
+            if(state.isLocked) return;
+            if (confirm('Keluar dari channel ini?')) {
+                state.isManualDisconnect = true;
+                sessionStorage.removeItem('it_user');
+                sessionStorage.removeItem('it_room');
+                window.location.reload();
+            }
+        };
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible') {
+                await requestWakeLock();
+                if (state.ws && state.ws.readyState === WebSocket.CLOSED && state.username) connectWebSocket();
+            } else {
+                if (wakeLock !== null) { await wakeLock.release(); wakeLock = null; }
+            }
+        });
+    </script>
+</body>
+</html>
