@@ -1,7 +1,7 @@
 {
   "name": "intratalk-server",
   "version": "1.0.0",
-  "description": "Walkie-talkie LAN server + signaling",
+  "description": "Walkie-talkie LAN signaling server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,6 +9,7 @@
   "dependencies": {
     "express": "^4.19.2",
     "peer": "^1.0.2",
-    "selfsigned": "^2.4.1"
+    "selfsigned": "^2.4.1",
+    "qrcode-terminal": "^0.12.0"
   }
 }
