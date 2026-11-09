@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>IntraTalk PTT — Walkie Talkie LAN</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+<style>
+  :root {
+    --bg: #f1f5f9; --card: #ffffff; --border: #e2e8f0;
+    --text: #1e293b; --muted: #64748b; --accent: #10b981;
+  }
+  .dark {
+    --bg: #020617; --card: #0f172a; --border: #1e293b;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #10b981;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; overscroll-behavior: none;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg); color: var(--text);
+    transition: background .3s, color .3s;
+    min-height: 100vh;
+  }
+  .screen { display: none; }
+  .screen.active { display: flex; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; }
+
+  .ptt-button {
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .2s;
+  }
+  .ptt-button.talking {
+    transform: scale(0.94);
+    box-shadow: 0 0 50px rgba(239,68,68,.7), inset 0 4px 14px rgba(0,0,0,.5) !important;
+    background: radial-gradient(circle, #ef4444 0%, #b91c1c 100%) !important;
+  }
+  .pulse-ring { animation: pulse-ring 1.5s cubic-bezier(.215,.61,.355,1) infinite; }
+  @keyframes pulse-ring {
+    0% { transform: scale(.95); opacity: .8; }
+    50% { transform: scale(1.15); opacity: .3; }
+    100% { transform: scale(.95); opacity: .8; }
+  }
+  input[type=range] { accent-color: var(--accent); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN SCREEN ================= -->
+<section id="screenLogin" class="screen active" style="min-height:100vh;align-items:center;justify-content:center;padding:16px;">
+  <div class="card" style="width:100%;max-width:380px;padding:24px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="display:inline-flex;width:64px;height:64px;border-radius:16px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);align-items:center;justify-content:center;color:#10b981;margin-bottom:12px;">
+        <i class="fa-solid fa-walkie-talkie" style="font-size:28px;"></i>
+      </div>
+      <h1 style="font-size:22px;font-weight:800;margin:0;">IntraTalk <span style="color:#10b981;">PTT</span></h1>
+      <p style="font-size:12px;color:var(--muted);margin:4px 0 0;">Interkom LAN — tanpa internet</p>
+    </div>
+
+    <!-- Info jaringan -->
+    <div id="netInfo" style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:12px;margin-bottom:16px;font-size:11px;line-height:1.7;">
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted);">Status Jaringan</span>
+        <span id="netStatus" style="font-weight:700;">Mengecek...</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted);">IP Lokal</span>
+        <span id="myIP" style="font-family:monospace;font-weight:700;">-</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--muted);">Server</span>
+        <span id="serverIP" style="font-family:monospace;font-weight:700;">-</span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Nama Panggilan</label>
+      <input id="inputName" type="text" maxlength="16" placeholder="Contoh: Budi"
+        style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-weight:500;" />
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Channel</label>
+      <input id="inputRoom" type="number" min="1" max="999" value="1"
+        style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:#10b981;font-size:16px;font-weight:700;font-family:monospace;" />
+    </div>
+
+    <button id="btnJoin" style="width:100%;padding:14px;border-radius:12px;background:linear-gradient(to right,#059669,#10b981);color:#fff;font-weight:700;font-size:14px;border:none;cursor:pointer;transition:transform .1s;">
+      <i class="fa-solid fa-right-to-bracket" style="margin-right:8px;"></i> Masuk Channel
+    </button>
+
+    <p id="loginError" style="font-size:11px;color:#ef4444;text-align:center;margin-top:12px;display:none;"></p>
+
+    <p style="font-size:10px;text-align:center;color:var(--muted);margin-top:16px;line-height:1.6;">
+      Pastikan HP terhubung ke <b>Wi-Fi yang sama</b> dengan server laptop.
+    </p>
+  </div>
+</section>
+
+<!-- ================= MAIN APP ================= -->
+<section id="screenApp" class="screen" style="flex-direction:column;width:100%;max-width:420px;margin:0 auto;min-height:100vh;padding:16px 16px 12px;">
+
+  <!-- Header -->
+  <header style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:40px;height:40px;border-radius:12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);display:flex;align-items:center;justify-content:center;color:#10b981;">
+        <i class="fa-solid fa-walkie-talkie"></i>
+      </div>
+      <div>
+        <h1 style="font-size:15px;font-weight:800;margin:0;">IntraTalk</h1>
+        <p id="headerUser" style="font-size:10px;color:var(--muted);margin:2px 0 0;"></p>
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button id="btnTheme" class="card" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;">
+        <i id="themeIcon" class="fa-solid fa-sun" style="font-size:14px;"></i>
+      </button>
+      <button id="btnLeave" class="card" style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);cursor:pointer;">
+        <i class="fa-solid fa-right-from-bracket" style="font-size:14px;"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Status Card -->
+  <div class="card" style="padding:14px;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div id="statusDot" style="width:12px;height:12px;border-radius:50%;background:#f59e0b;"></div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Status</div>
+          <div id="statusText" style="font-size:12px;font-weight:700;">Menghubungkan...</div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;">Channel</div>
+        <div id="channelBadge" style="font-size:14px;font-weight:900;color:#10b981;font-family:monospace;">#1</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div id="peerAvatars" style="display:flex;"></div>
+      <span id="peerCount" style="font-size:10px;font-weight:600;color:var(--muted);margin-left:4px;">Anda sendiri</span>
+    </div>
+  </div>
+
+  <!-- PTT Area -->
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;padding:12px 0;">
+    <div id="ringEffect" class="hidden pulse-ring" style="position:absolute;width:280px;height:280px;border-radius:50%;background:rgba(239,68,68,.2);pointer-events:none;"></div>
+
+    <button id="pttBtn" disabled class="ptt-button"
+      style="position:relative;width:220px;height:220px;border-radius:50%;background:linear-gradient(to bottom,#334155,#0f172a);border:4px solid var(--border);box-shadow:0 10px 25px rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer;opacity:.5;">
+      <div style="width:96px;height:96px;border-radius:50%;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;">
+        <i id="micIcon" class="fa-solid fa-microphone" style="font-size:36px;color:#94a3b8;transition:color .2s;"></i>
+      </div>
+      <span id="pttText" style="font-size:11px;font-weight:900;letter-spacing:2px;color:#fff;text-transform:uppercase;">Tahan &amp; Bicara</span>
+      <span style="font-size:9px;color:#94a3b8;font-weight:500;">Push To Talk</span>
+    </button>
+
+    <!-- Volume + VU meter -->
+    <div class="card" style="width:100%;padding:12px;margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span style="font-size:10px;font-weight:600;color:var(--muted);"><i class="fa-solid fa-volume-high" style="color:#10b981;"></i> Volume</span>
+        <span id="volumeValue" style="font-size:10px;font-family:monospace;color:var(--muted);">80%</span>
+      </div>
+      <input id="volumeSlider" type="range" min="0" max="100" value="80" style="width:100%;height:4px;border-radius:4px;background:var(--border);cursor:pointer;" />
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+        <i class="fa-solid fa-wave-square" style="color:#10b981;font-size:12px;"></i>
+        <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div id="audioMeter" style="height:100%;width:0;background:linear-gradient(to right,#10b981,#4ade80);transition:width .06s linear;"></div>
+        </div>
+        <span id="audioLevelText" style="font-size:9px;font-family:monospace;color:var(--muted);width:52px;text-align:right;">IDLE</span>
+      </div>
+    </div>
+  </div>
+
+  <footer style="text-align:center;font-size:10px;color:var(--muted);margin-top:8px;">
+    WebRTC P2P • Signaling lokal • Tanpa internet
+  </footer>
+</section>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+/* ============================================================
+   KONFIGURASI SERVER — diisi otomatis dari host halaman
+   ============================================================ */
+const SERVER_HOST = window.location.hostname;   // otomatis IP server
+const SERVER_PORT = 8443;
+const SERVER_PATH = '/myapp';
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  username: '', room: '1',
+  peer: null, peers: new Map(),
+  localStream: null, audioCtx: null, analyser: null,
+  meterRaf: null, isTalking: false, volume: 0.8
+};
+const $ = id => document.getElementById(id);
+
+/* ============================================================
+   TEMA
+   ============================================================ */
+function applyTheme(t) {
+  document.documentElement.classList.toggle('dark', t === 'dark');
+  document.body.style.background = t === 'dark' ? '#020617' : '#f1f5f9';
+  $('themeIcon').className = t === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+  localStorage.setItem('intratalk-theme', t);
+}
+applyTheme(localStorage.getItem('intratalk-theme') || 'dark');
+$('btnTheme').onclick = () => applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
+
+/* ============================================================
+   DETEKSI JARINGAN
+   ============================================================ */
+async function detectNetwork() {
+  // Status online
+  const online = navigator.onLine;
+  $('netStatus').textContent = online ? '🟢 Online' : '🔴 Offline';
+  $('netStatus').style.color = online ? '#10b981' : '#ef4444';
+
+  // IP lokal via WebRTC
+  try {
+    const ip = await getLocalIP();
+    $('myIP').textContent = ip || 'Tidak terdeteksi';
+  } catch (e) {
+    $('myIP').textContent = 'Tidak terdeteksi';
+  }
+
+  $('serverIP').textContent = SERVER_HOST;
+}
+
+async function getLocalIP() {
+  return new Promise((resolve) => {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    pc.createDataChannel('');
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) { pc.close(); return resolve(null); }
+      const m = e.candidate.candidate.match(/(\d+\.\d+\.\d+\.\d+)/);
+      if (m && !m[1].startsWith('127.')) { pc.close(); resolve(m[1]); }
+    };
+    pc.createOffer().then(o => pc.setLocalDescription(o));
+    setTimeout(() => { pc.close(); resolve(null); }, 2000);
+  });
+}
+
+window.addEventListener('online',  () => { $('netStatus').textContent = '🟢 Online'; $('netStatus').style.color = '#10b981'; });
+window.addEventListener('offline', () => { $('netStatus').textContent = '🔴 Offline'; $('netStatus').style.color = '#ef4444'; });
+
+/* ============================================================
+   BEEP
+   ============================================================ */
+function beep(type = 'start') {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    if (type === 'start') {
+      osc.frequency.setValueAtTime(700, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.07);
+      osc.start(); osc.stop(ctx.currentTime + 0.07);
+    } else {
+      osc.frequency.setValueAtTime(1000, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.start(); osc.stop(ctx.currentTime + 0.12);
+    }
+  } catch(e) {}
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+$('btnJoin').onclick = async () => {
+  const name = $('inputName').value.trim();
+  const room = ($('inputRoom').value || '1').toString().trim();
+  if (!name) return showError('Nama wajib diisi');
+  if (!/^\d{1,3}$/.test(room)) return showError('Channel 1-999');
+
+  $('btnJoin').disabled = true;
+  $('btnJoin').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyiapkan...';
+
+  try {
+    state.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+      video: false
+    });
+
+    state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    state.analyser = state.audioCtx.createAnalyser();
+    state.analyser.fftSize = 64;
+    state.audioCtx.createMediaStreamSource(state.localStream).connect(state.analyser);
+
+    state.username = name;
+    state.room = room;
+
+    $('screenLogin').classList.remove('active');
+    $('screenApp').classList.add('active');
+    $('headerUser').textContent = '@' + name;
+    $('channelBadge').textContent = '#' + room;
+
+    connectPeer();
+  } catch (err) {
+    console.error(err);
+    showError('Gagal akses mikrofon: ' + err.message);
+    $('btnJoin').disabled = false;
+    $('btnJoin').innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> Masuk Channel';
+  }
+};
+
+function showError(msg) {
+  const el = $('loginError');
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
+/* ============================================================
+   PEERJS — KONEKSI KE SERVER LOKAL
+   ============================================================ */
+const ROOM_PREFIX = 'intratalk-room-';
+
+function connectPeer() {
+  const myId = 'it-' + Math.random().toString(36).slice(2, 10);
+
+  state.peer = new Peer(myId, {
+    host: SERVER_HOST,
+    port: SERVER_PORT,
+    path: SERVER_PATH,
+    secure: true,           // server pakai HTTPS
+    debug: 1,
+    config: {
+      iceServers: []        // LAN → tanpa STUN/TURN
+    }
+  });
+
+  state.peer.on('open', () => {
+    setStatus('ready', 'Terhubung ke server');
+    $('pttBtn').disabled = false;
+    $('pttBtn').style.opacity = '1';
+    joinRoom();
+  });
+
+  state.peer.on('error', (err) => {
+    console.error('Peer error:', err);
+    setStatus('error', 'Server tidak terjangkau');
+    if (err.type === 'peer-unavailable') {
+      setTimeout(joinRoom, 1000);
+    }
+  });
+
+  state.peer.on('call', (call) => {
+    call.answer(state.localStream);
+    call.on('stream', (remoteStream) => attachRemoteAudio(call.peer, remoteStream));
+  });
+
+  state.peer.on('connection', (conn) => {
+    handleDataConnection(conn);
+  });
+}
+
+function joinRoom() {
+  const hostId = ROOM_PREFIX + state.room;
+  const conn = state.peer.connect(hostId, { metadata: { name: state.username } });
+
+  let opened = false;
+  conn.on('open', () => {
+    opened = true;
+    conn.send({ type: 'join', name: state.username });
+  });
+  conn.on('data', (d) => handleDataConnection_message(conn, d));
+  conn.on('close', () => setTimeout(joinRoom, 1500));
+
+  // Kalau host belum ada, jadi host
+  setTimeout(() => { if (!opened && !isHost) becomeHost(); }, 1800);
+}
+
+let isHost = false;
+
+function becomeHost() {
+  if (isHost) return;
+  isHost = true;
+  setStatus('ready', 'Anda host channel');
+  $('pttBtn').disabled = false;
+}
+
+function handleDataConnection(conn) {
+  conn.on('open', () => {
+    const info = conn.metadata || {};
+    addPeer(conn.peer, info.name || 'Anonim', conn);
+  });
+  conn.on('data', (d) => handleDataConnection_message(conn, d));
+  conn.on('close', () => removePeer(conn.peer));
+}
+
+function handleDataConnection_message(conn, data) {
+  if (!data) return;
+  switch (data.type) {
+    case 'join':
+      addPeer(conn.peer, data.name, conn);
+      conn.send({ type: 'peers', list: [...state.peers.keys()].filter(id => id !== conn.peer) });
+      broadcast({ type: 'presence', id: conn.peer, name: data.name });
+      break;
+    case 'peers':
+      (data.list || []).forEach(id => connectToPeer(id));
+      break;
+    case 'presence':
+      if (data.id !== state.peer.id) connectToPeer(data.id);
+      break;
+    case 'talk-start':
+      if (!state.isTalking) setStatus('receiving', (data.name || 'Seseorang') + ' bicara');
+      break;
+    case 'talk-stop':
+      if (!state.isTalking) { setStatus('ready', 'Siap mendengarkan'); beep('roger'); }
+      break;
+  }
+}
+
+function connectToPeer(remoteId) {
+  if (!remoteId || remoteId === state.peer.id || state.peers.has(remoteId)) return;
+  const conn = state.peer.connect(remoteId, { metadata: { name: state.username } });
+  conn.on('open', () => {
+    addPeer(remoteId, 'Peer', conn);
+    const call = state.peer.call(remoteId, state.localStream, { metadata: { name: state.username } });
+    if (call) call.on('stream', (s) => attachRemoteAudio(remoteId, s));
+  });
+  conn.on('data', d => handleDataConnection_message(conn, d));
+  conn.on('close', () => removePeer(remoteId));
+}
+
+function broadcast(msg) {
+  state.peers.forEach(p => { try { p.conn.send(msg); } catch(e){} });
+}
+
+/* ============================================================
+   PEER UI
+   ============================================================ */
+function addPeer(id, name, conn) {
+  if (state.peers.has(id)) {
+    const p = state.peers.get(id);
+    if (name && name !== 'Peer') p.name = name;
+    renderPeers();
+    return;
+  }
+  state.peers.set(id, { id, name, conn });
+  renderPeers();
+}
+
+function removePeer(id) {
+  const p = state.peers.get(id);
+  if (p && p.audioEl) p.audioEl.remove();
+  state.peers.delete(id);
+  renderPeers();
+}
+
+function attachRemoteAudio(id, stream) {
+  const p = state.peers.get(id);
+  if (!p) return;
+  if (p.audioEl) { p.audioEl.srcObject = stream; return; }
+  const a = document.createElement('audio');
+  a.autoplay = true; a.playsInline = true; a.volume = state.volume;
+  a.srcObject = stream;
+  document.body.appendChild(a);
+  p.audioEl = a;
+}
+
+function renderPeers() {
+  const colors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899','#06b6d4'];
+  const box = $('peerAvatars');
+  box.innerHTML = '';
+  const myColor = colors[state.username.charCodeAt(0) % colors.length];
+  box.innerHTML += `<div style="width:28px;height:28px;border-radius:50%;background:${myColor};border:2px solid var(--card);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;margin-left:-6px;">${state.username[0].toUpperCase()}</div>`;
+  state.peers.forEach(p => {
+    const c = colors[(p.name||'?').charCodeAt(0) % colors.length];
+    box.innerHTML += `<div style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid var(--card);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;margin-left:-6px;" title="${p.name}">${(p.name||'?')[0].toUpperCase()}</div>`;
+  });
+  $('peerCount').textContent = state.peers.size === 0 ? 'Anda sendiri' : `+${state.peers.size} perangkat`;
+}
+
+/* ============================================================
+   PTT
+   ============================================================ */
+function startTalk() {
+  if (state.isTalking || !state.localStream) return;
+  state.isTalking = true;
+  beep('start');
+  $('pttBtn').classList.add('talking');
+  $('pttText').textContent = 'BICARA SEKARANG';
+  $('micIcon').style.color = '#fff';
+  $('ringEffect').classList.remove('hidden');
+  setStatus('talking', 'Menyiarkan...');
+  broadcast({ type: 'talk-start', name: state.username });
+  startMeter();
+}
+
+function stopTalk() {
+  if (!state.isTalking) return;
+  state.isTalking = false;
+  $('pttBtn').classList.remove('talking');
+  $('pttText').textContent = 'Tahan & Bicara';
+  $('micIcon').style.color = '#94a3b8';
+  $('ringEffect').classList.add('hidden');
+  setStatus('ready', 'Siap mendengarkan');
+  broadcast({ type: 'talk-stop', name: state.username });
+  stopMeter();
+}
+
+const pttBtn = $('pttBtn');
+pttBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); startTalk(); });
+pttBtn.addEventListener('pointerup', (e) => { e.preventDefault(); stopTalk(); });
+pttBtn.addEventListener('pointerleave', () => stopTalk());
+pttBtn.addEventListener('pointercancel', () => stopTalk());
+pttBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+/* ============================================================
+   METER
+   ============================================================ */
+function startMeter() {
+  if (!state.analyser) return;
+  const data = new Uint8Array(state.analyser.frequencyBinCount);
+  const loop = () => {
+    state.analyser.getByteFrequencyData(data);
+    let s = 0; for (let i = 0; i < data.length; i++) s += data[i];
+    const pct = Math.min(100, Math.round((s / data.length) / 1.28));
+    $('audioMeter').style.width = pct + '%';
+    $('audioLevelText').textContent = 'VOX ' + pct + '%';
+    state.meterRaf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function stopMeter() {
+  if (state.meterRaf) cancelAnimationFrame(state.meterRaf);
+  $('audioMeter').style.width = '0';
+  $('audioLevelText').textContent = 'IDLE';
+}
+
+/* ============================================================
+   STATUS
+   ============================================================ */
+function setStatus(mode, text) {
+  const dot = $('statusDot'), st = $('statusText');
+  st.textContent = text;
+  const map = {
+    ready:     { color: '#10b981', glow: '0 0 10px #10b981' },
+    talking:   { color: '#ef4444', glow: '0 0 12px #ef4444' },
+    receiving: { color: '#f59e0b', glow: '0 0 12px #f59e0b' },
+    error:     { color: '#ef4444', glow: '0 0 12px #ef4444' }
+  };
+  const m = map[mode] || map.ready;
+  dot.style.background = m.color;
+  dot.style.boxShadow = m.glow;
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+detectNetwork();
+$('volumeSlider').addEventListener('input', (e) => {
+  state.volume = e.target.value / 100;
+  $('volumeValue').textContent = e.target.value + '%';
+  state.peers.forEach(p => { if (p.audioEl) p.audioEl.volume = state.volume; });
+});
+$('btnLeave').onclick = () => location.reload();
+
+// Cegah scroll bounce di HP
+document.addEventListener('touchmove', (e) => {
+  if (!e.target.closest('input')) e.preventDefault();
+}, { passive: false });
+</script>
+</body>
+</html>
