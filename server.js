@@ -1,35 +1,52 @@
-const express = require('express');
 const https = require('https');
+const express = require('express');
 const { ExpressPeerServer } = require('peer');
 const selfsigned = require('selfsigned');
 const os = require('os');
-const path = require('path');
+const qrcode = require('qrcode-terminal');
 
 // ============================================================
-// 1. GENERATE SELF-SIGNED CERT (auto, tanpa OpenSSL manual)
+// 1. GENERATE CERT
 // ============================================================
 console.log('🔐 Membuat sertifikat SSL...');
-const attrs = [{ name: 'commonName', value: 'intratalk.local' }];
-const pems = selfsigned.generate(attrs, {
-  days: 365,
-  keySize: 2048,
-  algorithm: 'sha256',
-  extensions: [{
-    name: 'subjectAltName',
-    altNames: [
-      { type: 2, value: 'localhost' },
-      { type: 7, ip: '127.0.0.1' },
-      // Tambahkan IP LAN Anda di sini jika perlu, misal:
-      // { type: 7, ip: '192.168.1.100' }
-    ]
-  }]
-});
+const pems = selfsigned.generate(
+  [{ name: 'commonName', value: 'intratalk.local' }],
+  {
+    days: 365,
+    keySize: 2048,
+    algorithm: 'sha256',
+    extensions: [{
+      name: 'subjectAltName',
+      altNames: [
+        { type: 2, value: 'localhost' },
+        { type: 7, ip: '127.0.0.1' }
+      ]
+    }]
+  }
+);
 
 // ============================================================
-// 2. EXPRESS APP + STATIC FILES
+// 2. EXPRESS APP
 // ============================================================
 const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
+
+// CORS untuk GitHub Pages
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
+// Health check endpoint (untuk test koneksi dari HP)
+app.get('/', (req, res) => {
+  res.send(`
+    <h2>🎙️ IntraTalk Server Aktif</h2>
+    <p>Server signaling walkie-talkie LAN.</p>
+    <p>Kembali ke halaman walkie-talkie di GitHub Pages.</p>
+  `);
+});
 
 // ============================================================
 // 3. HTTPS SERVER
@@ -40,7 +57,7 @@ const server = https.createServer(
 );
 
 // ============================================================
-// 4. PEERJS SIGNALING SERVER (di path /myapp)
+// 4. PEERJS SIGNALING
 // ============================================================
 const peerServer = ExpressPeerServer(server, {
   path: '/myapp',
@@ -49,7 +66,6 @@ const peerServer = ExpressPeerServer(server, {
 });
 app.use('/myapp', peerServer);
 
-// Log koneksi peer
 peerServer.on('connection', (client) => {
   console.log(`🟢 Peer terhubung: ${client.getId()}`);
 });
@@ -58,7 +74,7 @@ peerServer.on('disconnect', (client) => {
 });
 
 // ============================================================
-// 5. START & TAMPILKAN INFO AKSES
+// 5. START + TAMPILKAN QR CODE
 // ============================================================
 const PORT = 8443;
 server.listen(PORT, '0.0.0.0', () => {
@@ -72,20 +88,37 @@ server.listen(PORT, '0.0.0.0', () => {
     }
   }
 
-  console.log('\n═══════════════════════════════════════════════');
+  console.log('\n═══════════════════════════════════════════════════════════');
   console.log('   🎙️  INTRATALK SERVER AKTIF');
-  console.log('═══════════════════════════════════════════════');
+  console.log('═══════════════════════════════════════════════════════════');
   console.log(`   Port       : ${PORT}`);
   console.log(`   Signaling  : /myapp`);
-  console.log('───────────────────────────────────────────────');
-  console.log('   Buka di HP (satu Wi-Fi):');
-  ips.forEach(ip => {
-    console.log(`   👉  https://${ip}:${PORT}`);
-  });
-  console.log('───────────────────────────────────────────────');
-  console.log('   ⚠️  Browser akan peringatkan "not secure".');
-  console.log('       Klik "Advanced" → "Proceed" untuk lanjut.');
-  console.log('   ⚠️  Pastikan firewall laptop mengizinkan');
-  console.log(`       koneksi masuk ke port ${PORT}.`);
-  console.log('═══════════════════════════════════════════════\n');
+  console.log('───────────────────────────────────────────────────────────');
+
+  if (ips.length === 0) {
+    console.log('   ⚠️  Tidak ada IP LAN terdeteksi!');
+    console.log('       Pastikan laptop terhubung ke Wi-Fi/LAN.');
+  } else {
+    ips.forEach((ip, idx) => {
+      console.log(`\n   📡 Alamat Server #${idx + 1}: ${ip}`);
+      console.log(`   👉  Scan QR berikut dari HP Anda:\n`);
+
+      // QR berisi "IP:PORT" — format yang akan di-parse HP
+      qrcode.generate(`${ip}:${PORT}`, { small: true });
+
+      console.log(`\n   URL lengkap (jika perlu manual):`);
+      console.log(`   https://${ip}:${PORT}\n`);
+    });
+  }
+
+  console.log('───────────────────────────────────────────────────────────');
+  console.log('   📱 Cara pakai:');
+  console.log('      1. Buka halaman walkie-talkie di HP');
+  console.log('      2. Klik tombol "Scan QR Server"');
+  console.log('      3. Arahkan kamera ke QR di atas');
+  console.log('      4. Isi nama & channel, lalu masuk');
+  console.log('───────────────────────────────────────────────────────────');
+  console.log('   ⚠️  Pastikan firewall mengizinkan port ' + PORT);
+  console.log('   ⚠️  HP harus di Wi-Fi yang sama dengan laptop');
+  console.log('═══════════════════════════════════════════════════════════\n');
 });
