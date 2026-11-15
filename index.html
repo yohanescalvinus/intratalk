@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>IntraTalk PTT — LAN</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -168,7 +168,6 @@
     <!-- MODAL CHAT -->
     <div id="chatModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[1000] flex flex-col justify-end">
         <div class="bg-white dark:bg-slate-900 w-full h-[80vh] rounded-t-3xl shadow-2xl flex flex-col">
-            <!-- Header Chat (Dengan Tombol Clear) -->
             <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
                 <h3 class="font-bold text-lg text-slate-800 dark:text-slate-100"><i class="fa-solid fa-comments text-blue-500 mr-2"></i> Chat Channel</h3>
                 <div class="flex gap-2">
@@ -288,6 +287,8 @@
             if (!globalAudioCtx) unlockAudio();
             const ctx = globalAudioCtx;
             if (!ctx) return;
+            // Pastikan context resume di setiap beep (iOS)
+            if (ctx.state === 'suspended') ctx.resume();
 
             try {
                 const osc = ctx.createOscillator(); 
@@ -347,7 +348,14 @@
 
             try {
                 if (!state.localStream) {
-                    state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    // KUALITAS AUDIO DITINGKATKAN (dari deepseek)
+                    state.localStream = await navigator.mediaDevices.getUserMedia({ 
+                        audio: { 
+                            echoCancellation: true, 
+                            noiseSuppression: true, 
+                            autoGainControl: true 
+                        } 
+                    });
                     state.localStream.getAudioTracks().forEach(t => t.enabled = false);
                     state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     state.analyser = state.audioContext.createAnalyser();
@@ -366,7 +374,7 @@
                 await requestWakeLock(); 
             } catch (err) {
                 alert('Gagal akses mic: ' + err.message);
-                $('btnJoin').innerHTML = 'Masuk Channel';
+                $('btnJoin').innerHTML = '<i class="fa-solid fa-right-to-bracket mr-2"></i> Masuk Channel';
             }
         };
 
@@ -379,6 +387,9 @@
                 $('pttBtn').disabled = false;
                 state.ws.send(JSON.stringify({ type: 'join', name: state.username, room: state.room, session_id: state.sessionId }));
             };
+
+            // TAMBAHAN dari deepseek: onerror
+            state.ws.onerror = () => { setStatus('Gagal Konek Server', 'error'); };
 
             state.ws.onmessage = async (event) => {
                 const data = JSON.parse(event.data);
@@ -498,6 +509,7 @@
                 setStatus('Terputus...', 'error');
                 $('pttBtn').disabled = true;
                 
+                // CLEANUP PEERS (dari index.html)
                 const selfName = state.users['self'];
                 state.users = { 'self': selfName };
                 state.peers.forEach(pc => pc.close());
@@ -509,7 +521,10 @@
         }
 
         function createPeerConnection(peerId, isInitiator) {
-            const pc = new RTCPeerConnection({ iceServers: [] });
+            // STUN SERVER dari deepseek (KRITIS untuk koneksi lintas jaringan)
+            const pc = new RTCPeerConnection({ 
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
+            });
             state.localStream.getTracks().forEach(track => pc.addTrack(track, state.localStream));
             
             pc.onicecandidate = e => { if (e.candidate) sendSignal(peerId, { candidate: e.candidate }); };
@@ -520,10 +535,14 @@
                     audioEl = document.createElement('audio');
                     audioEl.id = 'audio-' + peerId;
                     audioEl.autoplay = true;
+                    audioEl.playsInline = true; // IOS FIX
                     audioEl.volume = state.volume;
                     document.body.appendChild(audioEl);
                 }
                 audioEl.srcObject = remoteStream;
+                // IOS FIX: play dengan catch
+                audioEl.play().catch(err => console.log('Audio autoplay diblokir:', err));
+                
                 const selectedDevice = $('audioOutputSelect').value;
                 if (selectedDevice && audioEl.setSinkId) audioEl.setSinkId(selectedDevice).catch(e => console.log(e));
             };
@@ -599,7 +618,6 @@
 
         $('btnCloseChat').onclick = () => $('chatModal').classList.add('hidden');
 
-        // FITUR CLEAR CHAT DI HP USER
         $('btnClearChat').onclick = () => {
             if(confirm('Bersihkan layar chat ini? (Tidak menghapus di server)')) {
                 $('chatMessages').innerHTML = '';
@@ -661,6 +679,7 @@
             applyVolume(e.target.value / 100);
         });
 
+        // KONTROL VOLUME VIA KEYBOARD (dari index.html)
         window.addEventListener('keydown', (e) => {
             if (state.isLocked) return;
             if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp' || e.keyCode === 175) {
@@ -750,6 +769,7 @@
             }
         };
 
+        // WAKE LOCK (dari index.html)
         let wakeLock = null;
         async function requestWakeLock() {
             try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
