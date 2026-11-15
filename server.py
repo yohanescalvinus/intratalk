@@ -159,6 +159,7 @@ async def cmd_chat_reader():
                 tampilkan_qr()
                 continue
 
+            # --- BAGIAN YANG DIPERBAIKI ---
             if cmd_lower == '/help':
                 print("\n" + "-"*60)
                 print("🛠️  DAFTAR PERINTAH ADMIN:")
@@ -176,6 +177,7 @@ async def cmd_chat_reader():
                 print("  /pttlog all                         -> Rekap PTT semua channel")
                 print("  /chat <nomor> <pesan>               -> Chat ke 1 channel")
                 print("  /chat <nomor> <nama> <pesan>        -> Chat ke 1 orang")
+                print("  /ring                               -> Alarm ke SEMUA channel")
                 print("  /ring <nomor>                       -> Alarm ke 1 channel")
                 print("  /ring <nomor> <nama>                -> Alarm ke 1 orang")
                 print("  /users <nomor>                      -> Lihat pengguna 1 channel")
@@ -184,6 +186,7 @@ async def cmd_chat_reader():
                 print("  /kick <nomor> <nama>                -> Tendang 1 orang")
                 print("-"*60 + "\n")
                 continue
+            # ------------------------------
 
             if cmd_lower == '/clear':
                 os.system('cls' if os.name == 'nt' else 'clear')
