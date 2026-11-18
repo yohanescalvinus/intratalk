@@ -34,6 +34,24 @@ URL_AKSES = ""
 server_runner = None
 server_site = None
 
+# ============================================================
+# HELPER: Cek apakah event cocok dengan filter admin_listen_target
+# ============================================================
+def is_admin_target(name, channel):
+    """Return True jika event cocok dengan filter /listen admin."""
+    t_name = admin_listen_target['name']
+    t_chan = admin_listen_target['channel']
+    # Mode "all"
+    if t_name is None and t_chan is None:
+        return True
+    # Mode channel only
+    if t_name is None and str(channel) == t_chan:
+        return True
+    # Mode user + channel
+    if t_name is not None and t_chan is not None:
+        return name.lower() == t_name and str(channel) == t_chan
+    return False
+
 async def index_handler(request):
     return web.FileResponse('./index.html')
 
@@ -53,15 +71,22 @@ def print_admin_log(text):
     print("📢 Admin > ", end="", flush=True)
 
 async def send_to_channel(room_id, msg):
+    """Kirim pesan ke semua WebSocket di channel tertentu."""
+    room_id = str(room_id).strip()
     if room_id in rooms:
-        for ws in rooms[room_id]:
+        for ws in list(rooms[room_id]):
             try: await ws.send_json(msg)
             except: pass
+        return True
+    return False
 
 async def send_to_target(target_name, target_channel, msg):
+    """Kirim pesan privat ke 1 user di channel tertentu."""
     found = 0
-    for ws, info in clients.items():
-        if info['name'].lower() == target_name.lower() and str(info['room']) == str(target_channel):
+    target_name = target_name.strip().lower()
+    target_channel = str(target_channel).strip()
+    for ws, info in list(clients.items()):
+        if info['name'].lower() == target_name and str(info['room']) == target_channel:
             try: 
                 await ws.send_json(msg)
                 found += 1
@@ -70,10 +95,11 @@ async def send_to_target(target_name, target_channel, msg):
 
 async def kick_user(target_name, target_channel=None):
     found_count = 0
+    target_name = target_name.strip().lower()
     for ws, info in list(clients.items()):
-        match_channel = (target_channel is None) or (str(info['room']) == str(target_channel))
+        match_channel = (target_channel is None) or (str(info['room']) == str(target_channel).strip())
         
-        if info['name'].lower() == target_name.lower() and match_channel:
+        if info['name'].lower() == target_name and match_channel:
             found_count += 1
             room_id = info['room']
             print_admin_log(f"🚫 [KICK] Menendang {info['name']} dari Channel #{room_id}...")
@@ -94,6 +120,7 @@ async def kick_user(target_name, target_channel=None):
         print_admin_log(f"✅ [KICK] {found_count} pengguna bernama '{target_name}' berhasil ditendang.")
 
 async def kick_channel(target_channel):
+    target_channel = str(target_channel).strip()
     found_count = 0
     if target_channel in rooms:
         for ws in list(rooms[target_channel]):
@@ -159,7 +186,6 @@ async def cmd_chat_reader():
                 tampilkan_qr()
                 continue
 
-            # --- BAGIAN YANG DIPERBAIKI ---
             if cmd_lower == '/help':
                 print("\n" + "-"*60)
                 print("🛠️  DAFTAR PERINTAH ADMIN:")
@@ -177,6 +203,7 @@ async def cmd_chat_reader():
                 print("  /pttlog all                         -> Rekap PTT semua channel")
                 print("  /chat <nomor> <pesan>               -> Chat ke 1 channel")
                 print("  /chat <nomor> <nama> <pesan>        -> Chat ke 1 orang")
+                print("  /chat all <pesan>                   -> Chat ke SEMUA channel")
                 print("  /ring                               -> Alarm ke SEMUA channel")
                 print("  /ring <nomor>                       -> Alarm ke 1 channel")
                 print("  /ring <nomor> <nama>                -> Alarm ke 1 orang")
@@ -186,7 +213,6 @@ async def cmd_chat_reader():
                 print("  /kick <nomor> <nama>                -> Tendang 1 orang")
                 print("-"*60 + "\n")
                 continue
-            # ------------------------------
 
             if cmd_lower == '/clear':
                 os.system('cls' if os.name == 'nt' else 'clear')
@@ -195,7 +221,7 @@ async def cmd_chat_reader():
                 print("="*60)
                 continue
 
-            # FITUR PTT LOG
+            # ============ FITUR PTT LOG ============
             if cmd_lower.startswith('/pttlog'):
                 args = text.strip().split(' ')
                 if len(args) == 1 or (len(args) == 2 and args[1].lower() == 'all'):
@@ -235,7 +261,7 @@ async def cmd_chat_reader():
                     print("❌ Format: /pttlog <nomor> [nama] atau /pttlog all")
                 continue
 
-            # FITUR LISTEN
+            # ============ FITUR LISTEN ============
             if cmd_lower.startswith('/listen '):
                 args = text.strip().split(' ')
                 if args[1].lower() == 'all':
@@ -251,7 +277,7 @@ async def cmd_chat_reader():
                     print("❌ Format: /listen <nomor> [nama] atau /listen all")
                 continue
 
-            # FITUR LISTEN HISTORY
+            # ============ FITUR LISTEN HISTORY ============
             if cmd_lower.startswith('/listenhistory '):
                 args = text.strip().split(' ')
                 if args[1].lower() == 'all':
@@ -293,11 +319,11 @@ async def cmd_chat_reader():
                     print("❌ Format: /listenhistory <nomor> [nama] atau /listenhistory all")
                 continue
 
-            # FITUR USERS
+            # ============ FITUR USERS ============
             if cmd_lower.startswith('/users'):
                 args = text.strip().split(' ')
                 target_channel = None
-                if len(args) > 1 and args[1].lower() != 'all': target_channel = args[1]
+                if len(args) > 1 and args[1].lower() != 'all': target_channel = args[1].strip()
                 
                 print("\n" + "-"*40)
                 print("👥 DAFTAR PENGGUNA:")
@@ -310,7 +336,7 @@ async def cmd_chat_reader():
                 print("-" * 40 + "\n")
                 continue
 
-            # FITUR KICK
+            # ============ FITUR KICK ============
             if cmd_lower.startswith('/kick '):
                 args = text.strip().split(' ')
                 if len(args) >= 3:
@@ -321,7 +347,7 @@ async def cmd_chat_reader():
                     print("❌ Format: /kick <nomor> atau /kick <nomor> <nama>")
                 continue
 
-            # FITUR RING
+            # ============ FITUR RING ============
             if cmd_lower.startswith('/ring'):
                 args = text.strip().split(' ')
                 msg = {'type': 'receive-buzzer', 'id': 'admin', 'name': '📢 PUSAT KOMANDO'}
@@ -331,40 +357,98 @@ async def cmd_chat_reader():
                     if sent > 0: print(f"🚨 [ALARM] Ring terkirim ke {args[2]} di Ch #{args[1]}.")
                     else: print(f"❌ Pengguna {args[2]} tidak ditemukan.")
                 elif len(args) == 2:
-                    await send_to_channel(args[1], msg)
-                    print(f"🚨 [ALARM] Ring terkirim ke SEMUA orang di Channel #{args[1]}.")
+                    if await send_to_channel(args[1], msg):
+                        print(f"🚨 [ALARM] Ring terkirim ke SEMUA orang di Channel #{args[1]}.")
+                    else:
+                        print(f"❌ Channel #{args[1]} kosong / tidak ada.")
                 else:
-                    for room_id in rooms: await send_to_channel(room_id, msg)
-                    print("🚨 [ALARM] Ring disiarkan ke SEMUA channel!")
+                    any_sent = False
+                    for room_id in list(rooms.keys()): 
+                        if await send_to_channel(room_id, msg): any_sent = True
+                    if any_sent: print("🚨 [ALARM] Ring disiarkan ke SEMUA channel!")
+                    else: print("❌ Tidak ada channel aktif.")
                 continue
 
-            # FITUR CHAT
+            # ============ FITUR CHAT (FIXED) ============
             if cmd_lower.startswith('/chat '):
-                if len(parts) >= 4:
-                    target_channel = parts[1]
-                    target_name = parts[2]
-                    pesan = parts[3]
-                    msg = {'type': 'chat-message', 'id': 'admin', 'name': '📢 PUSAT KOMANDO', 'text': pesan}
-                    sent = await send_to_target(target_name, target_channel, msg)
-                    if sent > 0: print(f"✅ [CHAT ADMIN] Terkirim privat ke {target_name}.")
-                    else: print(f"❌ Pengguna {target_name} tidak ditemukan.")
-                elif len(parts) == 3:
-                    target_channel = parts[1]
-                    pesan = parts[2]
-                    msg = {'type': 'chat-message', 'id': 'admin', 'name': '📢 PUSAT KOMANDO', 'text': pesan}
-                    await send_to_channel(target_channel, msg)
-                    print(f"✅ [CHAT ADMIN] Terkirim ke Channel #{target_channel}.")
+                # Format yang didukung:
+                #   /chat all <pesan>                → broadcast ke semua channel
+                #   /chat <nomor> <pesan>            → broadcast ke 1 channel
+                #   /chat <nomor> <nama> <pesan>     → privat ke 1 user
+                
+                raw = text.strip()
+                # Pisahkan command body setelah "/chat "
+                body = raw[len('/chat '):].strip()
+                if not body:
+                    print("❌ Format: /chat <nomor> <pesan> | /chat <nomor> <nama> <pesan> | /chat all <pesan>")
+                    continue
+
+                tokens = body.split(' ', 2)  # maks 3 bagian
+
+                # Kasus: /chat all <pesan>  ATAU  /chat all <nama> <pesan>
+                if tokens[0].lower() == 'all':
+                    if len(tokens) == 1:
+                        print("❌ Format: /chat all <pesan>")
+                        continue
+                    elif len(tokens) == 2:
+                        # /chat all <pesan> → broadcast semua channel
+                        pesan = tokens[1]
+                        msg = {'type': 'chat-message', 'id': 'admin',
+                               'name': '📢 PUSAT KOMANDO', 'text': pesan}
+                        any_sent = False
+                        for room_id in list(rooms.keys()):
+                            if await send_to_channel(room_id, msg): any_sent = True
+                        if any_sent: print(f"✅ [CHAT ADMIN] Broadcast ke SEMUA channel: {pesan}")
+                        else: print("❌ Tidak ada channel aktif.")
+                    else:
+                        # /chat all <nama> <pesan> → privat ke user di semua channel
+                        target_name = tokens[1]
+                        pesan = tokens[2]
+                        msg = {'type': 'chat-message', 'id': 'admin',
+                               'name': '📢 PUSAT KOMANDO', 'text': pesan}
+                        total = 0
+                        for room_id in list(rooms.keys()):
+                            total += await send_to_target(target_name, room_id, msg)
+                        if total > 0: print(f"✅ [CHAT ADMIN] Privat ke {target_name} ({total} klien) di semua channel.")
+                        else: print(f"❌ Pengguna {target_name} tidak ditemukan di channel manapun.")
+                    continue
+
+                # Kasus: /chat <nomor> <pesan>  ATAU  /chat <nomor> <nama> <pesan>
+                target_channel = tokens[0].strip()
+                if len(tokens) == 1:
+                    print("❌ Format: /chat <nomor> <pesan> | /chat <nomor> <nama> <pesan> | /chat all <pesan>")
+                    continue
+                elif len(tokens) == 2:
+                    # /chat <nomor> <pesan> → broadcast ke 1 channel
+                    pesan = tokens[1]
+                    msg = {'type': 'chat-message', 'id': 'admin',
+                           'name': '📢 PUSAT KOMANDO', 'text': pesan}
+                    if await send_to_channel(target_channel, msg):
+                        print(f"✅ [CHAT ADMIN] Terkirim ke Channel #{target_channel}.")
+                    else:
+                        print(f"❌ Channel #{target_channel} kosong / tidak ada.")
                 else:
-                    print("❌ Format: /chat <nomor> [nama] <pesan>")
+                    # /chat <nomor> <nama> <pesan> → privat ke 1 user
+                    target_name = tokens[1]
+                    pesan = tokens[2]
+                    msg = {'type': 'chat-message', 'id': 'admin',
+                           'name': '📢 PUSAT KOMANDO', 'text': pesan}
+                    sent = await send_to_target(target_name, target_channel, msg)
+                    if sent > 0: 
+                        print(f"✅ [CHAT ADMIN] Terkirim privat ke {target_name} (Ch #{target_channel}).")
+                    else: 
+                        print(f"❌ Pengguna {target_name} tidak ditemukan di Channel #{target_channel}.")
                 continue
 
-            # PESAN BIASA (BROADCAST)
+            # ============ PESAN BIASA (BROADCAST SEMUA CHANNEL) ============
             msg = {'type': 'chat-message', 'id': 'admin', 'name': '📢 PUSAT KOMANDO', 'text': text}
-            for room_id in rooms: await send_to_channel(room_id, msg)
-            print(f"✅ [CHAT ADMIN] Broadcast terkirim ke semua channel.")
+            any_sent = False
+            for room_id in list(rooms.keys()): 
+                if await send_to_channel(room_id, msg): any_sent = True
+            if any_sent: print(f"✅ [CHAT ADMIN] Broadcast terkirim ke semua channel.")
+            else: print("❌ Tidak ada channel aktif. Pesan tidak terkirim.")
             
         except KeyboardInterrupt:
-            # TANGKAP SINYAL CTRL+C DI SINI
             print("\n\n🛑 Ctrl+C ditekan. Mematikan server secara paksa...")
             os._exit(0)
         except Exception:
@@ -373,7 +457,11 @@ async def cmd_chat_reader():
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    client_id = str(id(ws))
+    # ============================================================
+    # FIX #1: client_id JANGAN pakai id(ws) — gunakan session_id
+    # yang konsisten antara server & client.
+    # ============================================================
+    client_id = None
     client_room = None
     client_name = "Anonim"
 
@@ -389,9 +477,12 @@ async def websocket_handler(request):
                         client_name = sessions[session_id]['name']
                     else:
                         session_id = str(uuid.uuid4())[:8]
-                        client_room = data['room']
+                        client_room = str(data['room']).strip()
                         client_name = data['name']
                         sessions[session_id] = {'name': client_name, 'room': client_room}
+
+                    # ✅ FIX: gunakan session_id sebagai client_id
+                    client_id = session_id
 
                     await ws.send_json({'type': 'session_created', 'session_id': session_id})
                     current_time = datetime.now().strftime("%H:%M:%S")
@@ -410,85 +501,90 @@ async def websocket_handler(request):
                     await ws.send_json({'type': 'user-list', 'users': current_users})
                     await ws.send_json({'type': 'channel_status', 'busy': busy_rooms[client_room]})
                     
+                    # Broadcast ke peer lain di channel yang sama
                     for other_ws in rooms[client_room]:
-                        await other_ws.send_json({'type': 'peer-joined', 'id': client_id, 'name': client_name})
+                        try:
+                            await other_ws.send_json({'type': 'peer-joined', 'id': client_id, 'name': client_name})
+                        except: pass
                     rooms[client_room].append(ws)
 
-                    is_target = (admin_listen_target['name'] is None and admin_listen_target['channel'] is None) or \
-                                (admin_listen_target['name'] is None and str(client_room) == admin_listen_target['channel']) or \
-                                (client_name.lower() == admin_listen_target['name'] and str(client_room) == admin_listen_target['channel'])
-                    if is_target: print_admin_log(f"🟢 [MASUK] {client_name} bergabung ke Channel #{client_room}")
+                    if is_admin_target(client_name, client_room):
+                        print_admin_log(f"🟢 [MASUK] {client_name} bergabung ke Channel #{client_room}")
 
                 elif data['type'] == 'signal':
+                    if client_id is None:
+                        continue
                     target_id = data['target']
-                    for target_ws, info in clients.items():
+                    for target_ws, info in list(clients.items()):
                         if info['id'] == target_id:
-                            await target_ws.send_json({
-                                'type': 'signal', 'id': client_id,
-                                'sdp': data.get('sdp'), 'candidate': data.get('candidate')
-                            })
+                            try:
+                                await target_ws.send_json({
+                                    'type': 'signal', 'id': client_id,
+                                    'sdp': data.get('sdp'), 'candidate': data.get('candidate')
+                                })
+                            except: pass
                             break
                             
                 elif data['type'] == 'request-talk':
                     if client_room and not busy_rooms.get(client_room, False):
                         busy_rooms[client_room] = True
                         await ws.send_json({'type': 'talk-granted'})
-                        for other_ws in rooms[client_room]:
+                        for other_ws in list(rooms[client_room]):
                             if other_ws != ws:
-                                await other_ws.send_json({'type': 'talk-start', 'id': client_id, 'name': client_name})
+                                try:
+                                    await other_ws.send_json({'type': 'talk-start', 'id': client_id, 'name': client_name})
+                                except: pass
                         
                         now = datetime.now().strftime("%H:%M:%S")
                         ptt_history.append({'name': client_name, 'channel': client_room, 'time': now})
                         if len(ptt_history) > 1000: ptt_history.pop(0)
 
-                        is_target = (admin_listen_target['name'] is None and admin_listen_target['channel'] is None) or \
-                                    (admin_listen_target['name'] is None and str(client_room) == admin_listen_target['channel']) or \
-                                    (client_name.lower() == admin_listen_target['name'] and str(client_room) == admin_listen_target['channel'])
-                        if is_target: print_admin_log(f"🎙️ [PTT] {client_name} sedang bicara (Ch #{client_room})")
+                        if is_admin_target(client_name, client_room):
+                            print_admin_log(f"🎙️ [PTT] {client_name} sedang bicara (Ch #{client_room})")
                     else:
                         await ws.send_json({'type': 'talk-denied'})
 
                 elif data['type'] == 'release-talk':
                     if client_room and busy_rooms.get(client_room, False):
                         busy_rooms[client_room] = False
-                        for other_ws in rooms[client_room]:
+                        for other_ws in list(rooms[client_room]):
                             if other_ws != ws:
-                                await other_ws.send_json({'type': 'talk-stop', 'id': client_id})
+                                try:
+                                    await other_ws.send_json({'type': 'talk-stop', 'id': client_id})
+                                except: pass
                         
-                        is_target = (admin_listen_target['name'] is None and admin_listen_target['channel'] is None) or \
-                                    (admin_listen_target['name'] is None and str(client_room) == admin_listen_target['channel']) or \
-                                    (client_name.lower() == admin_listen_target['name'] and str(client_room) == admin_listen_target['channel'])
-                        if is_target: print_admin_log(f"🔇 [PTT] {client_name} selesai bicara (Ch #{client_room})")
+                        if is_admin_target(client_name, client_room):
+                            print_admin_log(f"🔇 [PTT] {client_name} selesai bicara (Ch #{client_room})")
 
                 elif data['type'] == 'chat-message':
                     if client_room in rooms:
-                        for other_ws in rooms[client_room]:
-                            await other_ws.send_json({
-                                'type': 'chat-message', 'id': client_id,
-                                'name': client_name, 'text': data['text']
-                            })
+                        for other_ws in list(rooms[client_room]):
+                            try:
+                                await other_ws.send_json({
+                                    'type': 'chat-message', 'id': client_id,
+                                    'name': client_name, 'text': data['text']
+                                })
+                            except: pass
                         
                         now = datetime.now().strftime("%H:%M:%S")
                         chat_history.append({'name': client_name, 'channel': client_room, 'text': data['text'], 'time': now})
                         if len(chat_history) > 1000: chat_history.pop(0)
                         
-                        is_target = (admin_listen_target['name'] is None and admin_listen_target['channel'] is None) or \
-                                    (admin_listen_target['name'] is None and str(client_room) == admin_listen_target['channel']) or \
-                                    (client_name.lower() == admin_listen_target['name'] and str(client_room) == admin_listen_target['channel'])
-                        if is_target: print_admin_log(f"💬 [CHAT Ch #{client_room}] {client_name}: {data['text']}")
+                        if is_admin_target(client_name, client_room):
+                            print_admin_log(f"💬 [CHAT Ch #{client_room}] {client_name}: {data['text']}")
 
                 elif data['type'] == 'send-buzzer':
                     if client_room in rooms:
-                        for other_ws in rooms[client_room]:
+                        for other_ws in list(rooms[client_room]):
                             if other_ws != ws:
-                                await other_ws.send_json({
-                                    'type': 'receive-buzzer', 'id': client_id, 'name': client_name
-                                })
+                                try:
+                                    await other_ws.send_json({
+                                        'type': 'receive-buzzer', 'id': client_id, 'name': client_name
+                                    })
+                                except: pass
                         
-                        is_target = (admin_listen_target['name'] is None and admin_listen_target['channel'] is None) or \
-                                    (admin_listen_target['name'] is None and str(client_room) == admin_listen_target['channel']) or \
-                                    (client_name.lower() == admin_listen_target['name'] and str(client_room) == admin_listen_target['channel'])
-                        if is_target: print_admin_log(f"🔔 [BUZZER] {client_name} memanggil (Ch #{client_room})")
+                        if is_admin_target(client_name, client_room):
+                            print_admin_log(f"🔔 [BUZZER] {client_name} memanggil (Ch #{client_room})")
 
     except Exception:
         pass
@@ -496,17 +592,27 @@ async def websocket_handler(request):
         if ws in clients:
             info = clients[ws]
             del clients[ws]
-            if info['room'] in rooms and ws in rooms[info['room']]:
-                rooms[info['room']].remove(ws)
-                if busy_rooms.get(info['room'], False): busy_rooms[info['room']] = False
-                for other_ws in rooms[info['room']]:
-                    try: await other_ws.send_json({'type': 'peer-left', 'id': client_id})
+            room = info['room']
+            if room in rooms and ws in rooms[room]:
+                rooms[room].remove(ws)
+                # Reset busy hanya jika tidak ada yang bicara
+                if busy_rooms.get(room, False):
+                    # Cek apakah masih ada user lain — kalau tidak, reset
+                    if len(rooms[room]) == 0:
+                        busy_rooms[room] = False
+                for other_ws in list(rooms[room]):
+                    try: await other_ws.send_json({'type': 'peer-left', 'id': info['id']})
                     except: pass
             
-            is_target = (admin_listen_target['name'] is None and admin_listen_target['channel'] is None) or \
-                        (admin_listen_target['name'] is None and str(info['room']) == admin_listen_target['channel']) or \
-                        (info['name'].lower() == admin_listen_target['name'] and str(info['room']) == admin_listen_target['channel'])
-            if is_target: print_admin_log(f"❌ [KELUAR] {info['name']} terputus dari Channel #{info['room']}.")
+            # Bersihkan room yang kosong dari dict rooms agar tidak menumpuk
+            # (tapi pertahankan agar bisa dibuat ulang nanti — tidak masalah jika dihapus)
+            if room in rooms and len(rooms[room]) == 0:
+                del rooms[room]
+                if room in busy_rooms:
+                    del busy_rooms[room]
+            
+            if is_admin_target(info['name'], info['room']):
+                print_admin_log(f"❌ [KELUAR] {info['name']} terputus dari Channel #{info['room']}.")
     return ws
 
 async def init_app():
